@@ -11,10 +11,8 @@ const { URL } = require('url');
 
 exports.facultyAllData = async (req, res) => {
     try {
-        const { facultyID:faculty_id } = req.query;
-        if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })
-        const facultyID = await generateUserIdByEnyId(faculty_id)
-         
+        const { facultyID } = req.query;
+
         // Main user query
         let userQuery = `
             SELECT 
@@ -85,26 +83,21 @@ exports.facultyAllData = async (req, res) => {
             });
         }
         user = user[0]; 
-        
 
         // Applied job count
-        // let appliedJobCountQuery = `SELECT count(*) as applied_job_count  FROM applied_jobs WHERE faculityID = ? `;
-        // appliedJobCount = await runQuery(appliedJobCountQuery, [facultyID]);
-        // user.applied_job_count = appliedJobCount[0].applied_job_count
-        
+        let appliedJobCountQuery = `SELECT count(*) as applied_job_count  FROM applied_jobs WHERE faculityID = ? `;
+        appliedJobCount = await runQuery(appliedJobCountQuery, [facultyID]);
+        user.applied_job_count = appliedJobCount[0].applied_job_count
+
         // Notification query
         let noteQuery = `SELECT COUNT(*) AS num_rows FROM notification WHERE faculityID = ? AND status = 1`;
         const note = await runQuery(noteQuery, [facultyID]);
         user.unread_notification = note[0].num_rows;
-       
+
         // Experience data query
         let experienceQuery = `SELECT * FROM faculity_experience WHERE faculityID = ?`;
-        let experience_data = await runQuery(experienceQuery, [facultyID]);
-        for (const value of experience_data) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-        user.experience_data = experience_data
-       
+        user.experience_data = await runQuery(experienceQuery, [facultyID]);
+
         // Education data query
         let educationQuery = `
             SELECT 
@@ -118,11 +111,7 @@ exports.facultyAllData = async (req, res) => {
             LEFT JOIN tbl_qualifications ON tbl_qualifications.ID = faculity_education.course
             WHERE faculityID = ?
         `;
-        let education_data = await runQuery(educationQuery, [facultyID]);
-        for (const value of education_data) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-        user.education_data = education_data
+        user.education_data = await runQuery(educationQuery, [facultyID]);
 
         // Skill data query
         let skillQuery = `
@@ -133,11 +122,7 @@ exports.facultyAllData = async (req, res) => {
             LEFT JOIN skills ON skills.id = faculity_skill.skill
             WHERE faculity_skill.faculityID = ?
         `;
-        let skill_data = await runQuery(skillQuery, [facultyID]);
-        for (const value of skill_data) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-        user.skill_data = skill_data
+        user.skill_data = await runQuery(skillQuery, [facultyID]);
 
         // Language data query
         let languageQuery = `
@@ -150,7 +135,6 @@ exports.facultyAllData = async (req, res) => {
         `;
         const languageData = await runQuery(languageQuery, [facultyID]);
         for (const value of languageData) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
             value.can_read_txt = value.can_read === 1 ? "Read" : "";
             value.can_write_txt = value.can_write === 1 ? "Write" : "";
             value.can_speak_txt = value.can_speak === 1 ? "Speak" : "";
@@ -164,7 +148,6 @@ exports.facultyAllData = async (req, res) => {
         const certificateData = await runQuery(certificateQuery, [facultyID]);
         for (const value of certificateData) {
             value.certificate_file = value.certificate_file ? `${process.env.FILE_BASE_URL}sources/upload/userAttachment/user${facultyID}/${value.certificate_file}` : '';
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
         }
         user.certificate_data = certificateData;
 
@@ -178,11 +161,7 @@ exports.facultyAllData = async (req, res) => {
             LEFT JOIN career_preferences ON career_preferences.id = faculity_career_preferences.career_id
             WHERE faculity_career_preferences.faculityID = ?
         `;
-        let career_preferences = await runQuery(careerPreferencesQuery, [facultyID]);
-        for (const value of career_preferences) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-        user.career_preferences = career_preferences
+        user.career_preferences = await runQuery(careerPreferencesQuery, [facultyID]);
 
         // City preferences data query
         let cityPreferencesQuery = `
@@ -193,11 +172,7 @@ exports.facultyAllData = async (req, res) => {
             LEFT JOIN cities ON cities.id = faculity_city_preferences.city
             WHERE faculity_city_preferences.faculityID = ?
         `;
-        let city_preferences = await runQuery(cityPreferencesQuery, [facultyID]);
-        for (const value of city_preferences) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-        user.city_preferences = city_preferences
+        user.city_preferences = await runQuery(cityPreferencesQuery, [facultyID]);
 
         // Salary preferences data query
         let salaryPreferencesQuery = `
@@ -210,11 +185,7 @@ exports.facultyAllData = async (req, res) => {
             WHERE faculity_users.faculityID = ?
         `;
 
-        let salary_preferences = await runQuery(salaryPreferencesQuery, [facultyID]); 
-        for (const value of salary_preferences) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-        user.salary_preferences = salary_preferences       
+        user.salary_preferences = await runQuery(salaryPreferencesQuery, [facultyID]);        
         
         // Social link data query
         const socialLinkQuery = `SELECT social_link FROM faculty_basic_info WHERE user_id = ?`;
@@ -254,7 +225,6 @@ exports.facultyAllData = async (req, res) => {
         user.other_details = otherDetails[0];
         user.created_at = getDateFormat(user.created_at)
         user.updated_at = getDateFormat(user.updated_at)
-        user.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
 
 
         const path = `${process.env.FILE_BASE_URL}sources/upload/user_videos`;
@@ -279,35 +249,19 @@ exports.facultyAllData = async (req, res) => {
 exports.facultyExperience = async (req, res) => {
     try {
         let data;
-        const { facultyID: faculty_id, id } = req.query;
-
-        const facultyID = await generateUserIdByEnyId(faculty_id);
+        const { facultyID, id } = req.query
 
         if (id) {
-            data = await runQuery(
-                `SELECT * FROM faculity_experience WHERE faculityID = ? AND id = ?`,
-                [facultyID, id]
-            );
+            data = await runQuery(`SELECT * FROM faculity_experience WHERE faculityID = ? AND id = ?`, [facultyID, id])
         } else {
-            data = await runQuery(
-                `SELECT * FROM faculity_experience WHERE faculityID = ?`,
-                facultyID
-            );
+            data = await runQuery(`SELECT * FROM faculity_experience WHERE faculityID = ? `, facultyID)
         }
 
-
-        const updatedData = data.map((item) => ({
-            ...item,
-            faculityID: replaceFacultyID('faculityID', faculty_id, facultyID),
-        }));
-
-        // Return the updated data
-        return sendSuccess(res, { data: updatedData, message: "Faculty Experience..." });
+        return sendSuccess(res, { data: data, message: "Faculty Experience..." })
     } catch (error) {
-        return sendError(res, { message: error.message });
+        return sendError(res, { message: error.message })
     }
-};
-
+}
 
 exports.saveFaculityExperience = async (req, res) => {
     try {
@@ -318,22 +272,16 @@ exports.saveFaculityExperience = async (req, res) => {
         }
         for (const value of facultyData) {
 
-            const { faculityID: faculty_id, organization, designation, responsibilities, start_date, end_date, currently } = value;
-            const facultyID = await generateUserIdByEnyId(faculty_id);
+            const { faculityID, organization, designation, responsibilities, start_date, end_date, currently } = value;
 
-            if (!facultyID) {
-                return sendError(res, { message: "Invalid User!, Please login again." });
-            }
-
-
-            if (!facultyID || !organization || !designation || !responsibilities || !start_date) {
+            if (!faculityID || !organization || !designation || !responsibilities || !start_date ) {
 
                 return sendError(res, { message: "Please fill all the input fields." });
 
             }
 
             const dataArray = {
-                faculityID: facultyID,
+                faculityID,
                 organization,
                 designation,
                 responsibilities,
@@ -386,7 +334,7 @@ exports.updateFaculityExperience = async (req, res) => {
             return sendError(res, { message: "Please enter start_date." });
         }
 
-
+      
 
         if (!id) {
             return sendError(res, { message: "Please enter experience id." });
@@ -401,14 +349,8 @@ exports.updateFaculityExperience = async (req, res) => {
 
         }
 
-        const faculty_ID = await generateUserIdByEnyId(faculityID);
-
-        if (!faculty_ID) {
-            return sendError(res, { message: "Invalid User!, Please login again." });
-        }
-
         const updateData = {
-            faculityID: faculty_ID,
+            faculityID,
             organization,
             designation,
             responsibilities,
@@ -457,7 +399,6 @@ exports.facultyLanguage = async (req, res) => {
     if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })
     try {
         const facultyID = await generateUserIdByEnyId(faculty_id)
-        console.log('facultyIDfacultyID',facultyID,faculty_id);
         let data
         if (id) {
 
@@ -467,12 +408,10 @@ exports.facultyLanguage = async (req, res) => {
                                     WHERE faculity_language.faculityID = ? AND faculity_language.id = ?`, [facultyID, id])
         } else {
             data = await runQuery(`SELECT faculity_language.*, language.language AS language_name
-                FROM faculity_language
-                JOIN language ON faculity_language.language = language.id
-                WHERE faculity_language.faculityID = ?`, [facultyID])
-                console.log('datadata',data,facultyID);
+                                    FROM faculity_language
+                                    JOIN language ON faculity_language.language = language.id
+                                    WHERE faculity_language.faculityID = ?`, [facultyID])
         }
-
 
         for (const value of data) {
             value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID);
@@ -498,14 +437,8 @@ exports.saveFaculityLangauge = async (req, res) => {
             return sendError(res, { message: "Invalid input format. Expected an array." });
         }
         for (const value of facultyData) {
-            const { faculityID: faculty_id, language, read, write, speak, proficiency } = value;
-            const facultyID = await generateUserIdByEnyId(faculty_id)
-            console.log('POST->>',facultyID,faculty_id);
-            if (!facultyID) {
-                return sendError(res, { message: "Invalid User!, Please login again." });
-            }
-
-            if (!faculty_id) {
+            const { faculityID, language, read, write, speak, proficiency } = value;
+            if (!faculityID) {
                 return sendError(res, { message: "Please enter faculityID..." });
             } else if (!language) {
                 return sendError(res, { message: "Please enter language..." });
@@ -518,12 +451,12 @@ exports.saveFaculityLangauge = async (req, res) => {
             } else if (!proficiency) {
                 return sendError(res, { message: "Please enter proficiency..." });
             }
-            const existingRecord = await runQuery('SELECT * FROM faculity_language WHERE faculityID = ? AND language = ?', [facultyID, language]);
+            const existingRecord = await runQuery('SELECT * FROM faculity_language WHERE faculityID = ? AND language = ?', [faculityID, language]);
             if (existingRecord.length > 0) {
                 return sendError(res, { message: `Faculty record with language already exists.` });
             }
             const dataArray = {
-                faculityID: facultyID,
+                faculityID,
                 language,
                 can_read: read,
                 can_write: write,
@@ -532,7 +465,7 @@ exports.saveFaculityLangauge = async (req, res) => {
             };
             await runQuery('INSERT INTO faculity_language SET ?', dataArray);
         }
-        return sendSuccess(res, { message: "Faculty languages have been updated successfully." });
+        return sendSuccess(res, { message: "Faculty experiences have been updated successfully." });
     } catch (error) {
         return sendError(res, { message: error.message });
     }
@@ -559,11 +492,6 @@ exports.updateFaculityLanguage = async (req, res) => {
             return sendError(res, { message: "Please send language." });
         }
 
-        const faculty_ID = await generateUserIdByEnyId(faculityID);
-        if (!faculty_ID) {
-            return sendError(res, { message: "Invalid User!, Please login again." });
-        }
-
         const existingRecord = await runQuery('SELECT * FROM faculity_language WHERE id = ? ', [id]);
 
         if (existingRecord.length === 0) {
@@ -571,7 +499,7 @@ exports.updateFaculityLanguage = async (req, res) => {
         }
 
         const updateData = {
-            faculityID: faculty_ID,
+            faculityID,
             language,
             can_read: read,
             can_write: write,
@@ -599,17 +527,11 @@ exports.UpdatefacultyVideoLink = async (req, res) => {
             return sendError(res, { message: "Please send faculty id." });
         } else if (!videoUrl) {
             return sendError(res, { message: "Please send video url." });
-        }
-
-        const faculty_ID = await generateUserIdByEnyId(facultyID);
-        if (!faculty_ID) {
-            return sendError(res, { message: "Invalid User!, Please login again." });
-        }
-
+        } 
         if (new URL(videoUrl)) {
-            await runQuery('UPDATE faculity_users SET video=? WHERE faculityID = ?', [videoUrl, faculty_ID]);
+            await runQuery('UPDATE faculity_users SET video=? WHERE faculityID = ?', [videoUrl, facultyID]);
             return sendSuccess(res, { message: `Video link updated successfully...` });
-        }
+        }  
     } catch (error) {
         return sendError(res, { message: error.message });
     }
@@ -641,13 +563,11 @@ exports.deleteFaculityLanguage = async (req, res) => {
 // Faculty Education ->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 exports.facultyEducation = async (req, res) => {
-    const { facultyID : faculty_id, id } = req.query
-    
-    if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })
+    const { facultyID, id } = req.query
+
+    if (!facultyID) return sendError(res, { message: 'Please provide Faculty Id' })
 
     try {
-        const facultyID = await generateUserIdByEnyId(faculty_id)
-       
         let data;
         if (id) {
             data = await runQuery(`SELECT faculity_education.*, result_type.type as result_type_txt, education_type.type as education_type, tbl_qualifications.qualification as course_txt
@@ -664,11 +584,6 @@ exports.facultyEducation = async (req, res) => {
                                 LEFT JOIN tbl_qualifications ON tbl_qualifications.ID =faculity_education.course
                                 WHERE faculity_education.faculityID = ?`, facultyID)
         }
-
-        for (const value of data) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-
         return sendSuccess(res, { data: data, message: "Faculty Education List..." })
     } catch (error) {
         return sendError(res, { message: error.message })
@@ -686,7 +601,6 @@ exports.saveFaculityEducation = async (req, res) => {
         for (const value of facultyData) {
 
             const { faculityID, institute_name, course, type, start_date, end_date, result, result_type, specialization, currently } = value;
-
 
             if (!faculityID) {
                 return sendError(res, { message: "Please fill faculityID." });
@@ -708,13 +622,9 @@ exports.saveFaculityEducation = async (req, res) => {
                 return sendError(res, { message: "Please fill currently." });
             }
 
-            const facultyID = await generateUserIdByEnyId(faculityID)
-            if (!facultyID) {
-                return sendError(res, { message: "Invalid User!, Please login again." });
-            }
 
             const dataArray = {
-                faculityID: facultyID,
+                faculityID,
                 institute_name,
                 course,
                 type,
@@ -764,11 +674,6 @@ exports.updateFaculityEducation = async (req, res) => {
             return sendError(res, { message: "Please fill currently." });
         }
 
-        const faculty_ID = await generateUserIdByEnyId(faculityID);
-        if (!faculty_ID) {
-            return sendError(res, { message: "Invalid User!, Please login again." });
-        }
-
         const existingRecord = await runQuery('SELECT * FROM faculity_education WHERE id = ? ', [education]);
 
         if (existingRecord.length === 0) {
@@ -776,7 +681,7 @@ exports.updateFaculityEducation = async (req, res) => {
         }
 
         const updateData = {
-            faculityID: faculty_ID,
+            faculityID,
             institute_name,
             course,
             type,
@@ -825,16 +730,12 @@ exports.deleteFaculityEducation = async (req, res) => {
 // Faculty Skill ->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 exports.facultySkill = async (req, res) => {
-    const { facultyID : faculty_id } = req.query
-    if (!faculty_id) {
+    const { facultyID } = req.query
+    if (!facultyID) {
         return sendError(res, { message: "Please provide facultyID." });
     }
     try {
-        const facultyID = await generateUserIdByEnyId(faculty_id)
         const data = await runQuery(`SELECT * FROM faculity_skill WHERE faculityID = ?`, facultyID)
-        for (const value of data) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
         return sendSuccess(res, { data: data, message: "Faculty Skill..." })
     } catch (error) {
         return sendError(res, { message: error.message })
@@ -850,17 +751,11 @@ exports.facultySkillSave = async (req, res) => {
         return sendError(res, { message: "Please provide at least 1 skill to add." });
     }
 
-    const facultyID = await generateUserIdByEnyId(faculityID);
-    if (!facultyID) {
-        return sendError(res, { message: "Invalid User!, Please login again." });
-    }
-
-
     try {
-        await runQuery(`DELETE FROM faculity_skill WHERE faculityID = ?`, [facultyID]);
+        await runQuery(`DELETE FROM faculity_skill WHERE faculityID = ?`, [faculityID]);
 
         for (const skill of skills) {
-            await runQuery(`INSERT INTO faculity_skill (faculityID, skill) VALUES (?, ?)`, [facultyID, skill]);
+            await runQuery(`INSERT INTO faculity_skill (faculityID, skill) VALUES (?, ?)`, [faculityID, skill]);
         }
 
         return sendSuccess(res, { data: [], message: "Faculty skills updated successfully." });
@@ -873,9 +768,7 @@ exports.facultySkillSave = async (req, res) => {
 
 exports.facultyCareerPreference = async (req, res) => {
     try {
-        const { facultyID : faculty_id } = req.query;
-        if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })
-        const facultyID = await generateUserIdByEnyId(faculty_id)
+        const { facultyID } = req.query;
 
         const [data, cityPreference, salaryID] = await Promise.all([
             runQuery(`
@@ -919,7 +812,6 @@ exports.facultyCareerPreference = async (req, res) => {
             if (!acc[item.type]) {
                 acc[item.type] = [];
             }
-            item.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID);
             acc[item.type].push(item);
             return acc;
         }, {});
@@ -939,9 +831,6 @@ exports.facultyCareerPreference = async (req, res) => {
 
         segregatedData.cityPreferences = []
         if (cityPreference.length > 0) {
-            for (const value of cityPreference) {
-                value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-            }
             segregatedData.cityPreferences = cityPreference;
         }
         segregatedData.salaryPreferences = []
@@ -955,21 +844,15 @@ exports.facultyCareerPreference = async (req, res) => {
 };
 
 exports.facultyCareerPreferenceSave = async (req, res) => {
-    const { facultyID: faculty_id, nature_of_employment, job_type, preferred_shift, job_role, preferred_city, preferred_salary } = req.body
+    const { facultyID, nature_of_employment, job_type, preferred_shift, job_role, preferred_city, preferred_salary } = req.body
 
-    if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })
+    if (!facultyID) return sendError(res, { message: 'Please provide Faculty Id' })
     else if (!nature_of_employment) return sendError(res, { message: 'Please provide Nature of Employment' })
     else if (!job_type) return sendError(res, { message: 'Please provide Job Type' })
     else if (!preferred_shift) return sendError(res, { message: 'Please provide Preferred Shift' })
     else if (!job_role) return sendError(res, { message: 'Please provide Job Role' })
     else if (!preferred_city) return sendError(res, { message: 'Please provide Preferred City' })
     else if (!preferred_salary) return sendError(res, { message: 'Please provide Preferred Salary' })
-
-    const facultyID = await generateUserIdByEnyId(faculty_id);
-    if (!facultyID) {
-        return sendError(res, { message: "Invalid User!, Please login again." });
-    }
-
 
     try {
         await runQuery('DELETE FROM faculity_city_preferences WHERE faculityID = ?', [facultyID]);
@@ -982,7 +865,7 @@ exports.facultyCareerPreferenceSave = async (req, res) => {
         for (const data of fourData) {
             await runQuery(`INSERT INTO faculity_career_preferences (faculityID, career_id) VALUES (?, ?)`, [facultyID, data]);
         }
-        return sendSuccess(res, { data: [], message: "Career Preference Saved Successfully..." })
+        return sendSuccess(res, { data: [], message: "Faculty Career Preference Posted..." })
     } catch (error) {
         return sendError(res, { message: error.message })
     }
@@ -990,16 +873,8 @@ exports.facultyCareerPreferenceSave = async (req, res) => {
 
 exports.facultyCityPreference = async (req, res) => {
     try {
-        const { facultyID : faculty_id } = req.query
-
-        if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })    
-        const facultyID = await generateUserIdByEnyId(faculty_id)
-
+        const { facultyID } = req.query
         const data = await runQuery(`SELECT * FROM faculity_city_preferences WHERE faculityID = ?`, facultyID)
-        for (const value of data) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
-
         return sendSuccess(res, { data: data, message: "Faculty City Preference..." })
     } catch (error) {
         return sendError(res, { message: error.message })
@@ -1010,10 +885,8 @@ exports.facultyCityPreference = async (req, res) => {
 
 exports.facultyCertificate = async (req, res) => {
     try {
-        const { facultyID : faculty_id, id } = req.query
-        if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })
-            
-        const facultyID = await generateUserIdByEnyId(faculty_id)
+        const { facultyID, id } = req.query
+
         let data;
         if (id) {
             data = await runQuery(`SELECT * FROM faculity_certificate WHERE faculityID = ? AND id = ?`, [facultyID, id])
@@ -1021,9 +894,7 @@ exports.facultyCertificate = async (req, res) => {
             data = await runQuery(`SELECT * FROM faculity_certificate WHERE faculityID = ?`, facultyID)
         }
 
-        for (const value of data) {
-            value.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
-        }
+
 
         return sendSuccess(res, { data: data, message: "Faculty Certificate..." })
     } catch (error) {
@@ -1046,18 +917,13 @@ exports.facultyCertificateSave = async (req, res) => {
         return sendError(res, { message: `Please enter your ${missingField}...` });
     }
 
-    const faculty_ID = await generateUserIdByEnyId(facultyID);
-    if (!faculty_ID) {
-        return sendError(res, { message: "Invalid User!, Please login again." });
-    }
-
     let fileToPath
 
     if (uploadedFile) {
         try {
-            const data = await runQuery(`select * from faculity_users where faculityID = ?`, [faculty_ID])
+            const data = await runQuery(`select * from faculity_users where faculityID = ?`, [facultyID])
             const phoneNumber = data[0].mobile
-            fileToPath = await moveFileToUserFolder(uploadedFile.path, faculty_ID, UserResumeBasePath, phoneNumber);
+            fileToPath = await moveFileToUserFolder(uploadedFile.path, facultyID, UserResumeBasePath, phoneNumber);
         } catch (error) {
             return sendError(res, { message: `File upload failed: ${error.message}` });
         }
@@ -1068,7 +934,7 @@ exports.facultyCertificateSave = async (req, res) => {
                 INSERT INTO faculity_certificate ( faculityID, title, description, certificate_file) 
                 VALUES (?, ?, ?, ?)
             `;
-        const values = [faculty_ID, title, description, fileToPath];
+        const values = [facultyID, title, description, fileToPath];
         await runQuery(query, values);
 
         return sendSuccess(res, { message: "Certificate Saved." });
@@ -1171,9 +1037,7 @@ exports.updateFaculityCertificate = async (req, res) => {
 
 exports.facultySocialLink = async (req, res) => {
     try {
-        const { facultyID : faculty_id } = req.query;
-        if (!faculty_id) return sendError(res, { message: 'Please provide Faculty Id' })
-        const facultyID = await generateUserIdByEnyId(faculty_id)
+        const { facultyID } = req.query;
 
         const data = await runQuery(
             `SELECT social_link FROM faculty_basic_info WHERE user_id = ?`,
@@ -1227,14 +1091,8 @@ exports.facultySocialLinkSave = async (req, res) => {
                 return acc;
             }, {})
         );
-
-        const faculty_ID = await generateUserIdByEnyId(facultyID);
-        if (!faculty_ID) {
-            return sendError(res, { message: "Invalid User!, Please login again." });
-        }
-
-
-        await runQuery(`UPDATE faculty_basic_info SET social_link = ? WHERE user_id = ?`, [serializedSocialLink, faculty_ID]);
+        console.log('serializedSocialLink', serializedSocialLink);
+        await runQuery(`UPDATE faculty_basic_info SET social_link = ? WHERE user_id = ?`, [serializedSocialLink, facultyID]);
         return sendSuccess(res, { data: [], message: "Faculty Social Link updated successfully." });
     } catch (error) {
         return sendError(res, { message: error.message });
@@ -1294,19 +1152,11 @@ exports.faculityWorkStatus = async (req, res) => {
         return sendError(res, { message: "Please fill status." });
     }
 
-    const faculty_ID = await generateUserIdByEnyId(facultyID);
-    if (!faculty_ID) {
-        return sendError(res, { message: "Invalid User!, Please login again." });
-    }
-
-
-
     try {
 
         const updateQuery = `UPDATE faculity_users SET work_status = ? WHERE faculityID = ?`;
 
-
-        await runQuery(updateQuery, [status, faculty_ID]);
+        await runQuery(updateQuery, [status, facultyID]);
 
         return sendSuccess(res, { message: "Faculty Work Status Updated successfully." });
 
@@ -1321,11 +1171,7 @@ exports.faculityWorkStatus = async (req, res) => {
 
 exports.otherDetails = async (req, res) => {
     try {
-        const { facultyID:faculty_id } = req.query
-
-    const facultyID = await generateUserIdByEnyId(faculty_id)
-
-
+        const { facultyID } = req.query
         const data = await runQuery(`SELECT 
         faculty_basic_info.bio, 
         faculty_basic_info.address, 
@@ -1349,17 +1195,11 @@ exports.otherDetails = async (req, res) => {
 }
 
 exports.updateOtherDetails = async (req, res) => {
-    const { facultyID: faculty_id, bio, address, hometown, pincode, gender, dob } = req.body;
+    const { facultyID, bio, address, hometown, pincode, gender, dob } = req.body;
 
-    if (!faculty_id) {
+    if (!facultyID) {
         return sendError(res, { message: "Please fill facultyID." });
     }
-
-    const facultyID = await generateUserIdByEnyId(faculty_id);
-    if (!facultyID) {
-        return sendError(res, { message: "Invalid User!, Please login again." });
-    }
-
 
     let updateArray = {};
 
@@ -1444,13 +1284,11 @@ exports.updateOtherDetails = async (req, res) => {
 
 exports.profilePercentage = async (req, res) => {
 
-    const { facultyID : faculty_id } = req.query;
+    const { facultyID } = req.query;
 
-    if (!faculty_id) {
+    if (!facultyID) {
         return sendError(res, { message: 'Faculty ID is required.', statusCode: 400 });
     }
-
-    const facultyID = await generateUserIdByEnyId(faculty_id)
 
     try {
         let dataCount = {};

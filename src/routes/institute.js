@@ -4,8 +4,7 @@ const { signInWithEmailAndPwd, profile, uploadProfileImage, updateProfile, updat
     sendResetEJSPage, sendSuccessPassword, sendOTPForResetPassword, verifyOTPForResetPassword, emailVerificationSend, verifyEmail, 
     mobileSendOTP,
     mobileVerifyOTP,
-    emailVerificationSendOtp, otherDetails,
-    generateUserId} = require('../controllers/institutations/authentication')
+    emailVerificationSendOtp, otherDetails} = require('../controllers/institutations/authentication')
 const { dashbaord ,insgetCategories,getSubCategories, getAQuote, bankList, getAllSubCategories, employeeNotificationList, deActiveEmployeeNotification} = require('../controllers/institutations/dashboard')
 const { workPlaceType, jobTypes, qualification, selectionProcess, questionsType, experinceLevel, createJob, 
     addScreenQuestion, jobList, jobDetails, applicationDetail, jobsHistory, processApplication, 
@@ -33,7 +32,6 @@ const { instituteMiddleware, checkPlansLimit } = require('../middlewares/institu
 const {uploadImage} = require('../utils/fileUploader')
 const { InstituteLOGO } = require('../utils/filesPath')
 const { sendNotification } = require('../utils/firebaseHandler')
-const { generateJobsId } = require('../controllers/users/jobs')
 
 const route = require('express').Router()
 
@@ -80,11 +78,7 @@ route.post('/authentication/registration-send-otp',registrationSendOTP)
 .get("/job/experience-level",instituteMiddleware(),experinceLevel)
 .get("/job/board-level",instituteMiddleware(),boardLevel)
 .post("/job/post",instituteMiddleware(),checkPlansLimit(),createJob)
-
-
 .get("/job/:jobID/screen-question",instituteMiddleware(),screenQuestion)
-
-
 .post("/job/add-screen-question",instituteMiddleware(),addScreenQuestion)
 .delete("/job/delete-screen-question/:ques_id",instituteMiddleware(),deleteScreenQuestion)
 .patch("/job/update-screen-question/:ques_id",instituteMiddleware(),updateScreeningQuestion)
@@ -153,7 +147,6 @@ route.post('/authentication/registration-send-otp',registrationSendOTP)
 .get("/benefits-list",  benefitsList)
 .get("/brand-level",  brandLevel)
 .get("/faq-list",faqListEmployer)
-.get("/generateJobsId", generateJobsId)
 module.exports = route
 
 

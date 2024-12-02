@@ -49,7 +49,7 @@ const {
     educationType,
     filterCategories,
     filterSubCategories,
-    filterCityList,
+    filterCityList, 
     filterStateCities,
     filterStateList,
     appWelcome,
@@ -75,8 +75,8 @@ const {
 
 const { setNewPassword, userProfile,
     signInWithEmailAndPwd, registartionAdditionalInformation, uploadProfileImage, uploadResume, resumeList, viewResume, addEducation, addExperience, registartionOTP, mobileSendOTP, mobileVerifyOTP,
-    changePassword,
-    forgetPassword,
+    changePassword, 
+    forgetPassword, 
     resetPassword,
     registration,
     emailLogin,
@@ -88,7 +88,7 @@ const { setNewPassword, userProfile,
     authCheck,
     verifyToken,
     faculitySearchSave,
-    faculitySearchList,
+    faculitySearchList, 
 } = require('../controllers/users/authetication');
 const { registrationCallUsers, callLogLogin, uploadCallLogs, usersCallList, callUserProfile, callChangePassword } = require('../controllers/users/callLogs')
 const {
@@ -106,8 +106,7 @@ const {
     jobDetailById,
     allFavourite,
     addFavourite,
-    removeFavourite,
-    generateJobsId
+    removeFavourite
 } = require('../controllers/users/jobs');
 
 const { notificationList, notificationRead, notificationDelete, sendBulkNotification, sendCareerPreferencesNotification, sendFaculityCertificateNotification, sendFaculityCityPreferencesNotification, sendFaculityExperienceNotification, sendFaculityLanguageNotification, sendFaculityEducationNotification, sendFaculitySkillNotification, sendPackSubscriptionNotification, faculitySearchNotification } = require('../controllers/users/notifications');
@@ -145,8 +144,7 @@ route.get("/state", stateList)
     .get("/cityByKey", cityByKey)
     .get("/stateByKey", stateByKey)
     .get("/subjectByKey", subjectByKey)
-
-    // Profile Get Api's - Done by Shubham
+    // Profile Get Api's 
     .get("/facultyLanguage", userMiddleware(), facultyLanguage)
     .get("/facultyEducation", userMiddleware(), facultyEducation)
     .get("/facultyCareerPreference", userMiddleware(), facultyCareerPreference)
@@ -158,14 +156,8 @@ route.get("/state", stateList)
     .get("/facultyProfileAllData", userMiddleware(), facultyAllData)
     .get("/facultyProfilePercentage", userMiddleware(), profilePercentage)
     .get("/otherDetails", userMiddleware(), otherDetails)
-
-
-
-
-
-    // Profile Post Api's - Done by Shubham
-
-    .post("/skillSearch", userMiddleware(), skillSearch)
+    // Profile Post Api's
+    .post("/skillSearch", skillSearch)
     .post("/facultyExperienceSave", userMiddleware(), saveFaculityExperience)
     .post("/facultyLanguageSave", userMiddleware(), saveFaculityLangauge)
     .post("/facultyEducationSave", userMiddleware(), saveFaculityEducation)
@@ -173,27 +165,21 @@ route.get("/state", stateList)
     .post("/facultyCareerPreferenceSave", userMiddleware(), facultyCareerPreferenceSave)
     .post("/facultySocialLinkSave", userMiddleware(), facultySocialLinkSave)
     .post("/facultyWorkStatus", userMiddleware(), faculityWorkStatus)
-    .post("/facultyOtherDetails", userMiddleware(), uploadImage(UserLOGO).single('banner'), updateOtherDetails)
-    .post("/facultyCertificateSave", userMiddleware(), uploadDocument(UserResume).single("certificate_file"), facultyCertificateSave)
-
-
-    // Profile Patch Api's - Done by Shubham
+    .post("/facultyOtherDetails", userMiddleware(), uploadImage(UserLOGO).single('banner'), updateOtherDetails)   
+    .post("/facultyCertificateSave", userMiddleware(), uploadDocument(UserResume).single("certificate_file"), facultyCertificateSave) 
+    // Profile Patch Api's
     .patch("/facultyExperienceUpdate", userMiddleware(), updateFaculityExperience)
     .patch("/facultyEducationUpdate", userMiddleware(), updateFaculityEducation)
     .patch("/facultyLanguageUpdate", userMiddleware(), updateFaculityLanguage)
-    .patch("/facultyCertificateUpdate", userMiddleware(), uploadDocument(UserResume).single("certificate_file"), updateFaculityCertificate)
+    .patch("/facultyCertificateUpdate", userMiddleware(), uploadDocument(UserResume).single("certificate_file"), updateFaculityCertificate) 
     .patch("/changepassword", changePassword)
     .patch("/facultyVideoLink", UpdatefacultyVideoLink)
-
-    // Profile Delete Api's - Done by Shubham
-
+    // Profile Delete Api's
     .delete("/facultyExperienceDelete", userMiddleware(), deleteFaculityExperience)
     .delete("/facultyLanguageDelete", userMiddleware(), deleteFaculityLanguage)
     .delete("/facultyEducationDelete", userMiddleware(), deleteFaculityEducation)
     .delete("/facultyCertificateDelete", userMiddleware(), deleteFaculityCertificate)
-
-
-    // Jobs - Done by Shubham - emp id
+    // Jobs
     .get("/filterJobs", filterJobs)
     .get("/appliedJobs", appliedJobs)
     .get("/appliedJobsStatus", appliedJobsStatus)
@@ -201,26 +187,16 @@ route.get("/state", stateList)
     .post("/addFavourite", addFavourite)
     .post("/removeFavourite", removeFavourite)
     .post("/applyJob", applyJob)
-
-
-    
-
-    // Authentication - Done by Shubham
-
-    .post("/authentication/registration", uploadDocument(UserResume).single("resume"), registration)
+    // Authentication
+    .post("/authentication/registration", uploadDocument(UserResume).single("resume"), registration) 
     .post("/authentication/mobileSendOTP", mobileSendOTP)
     .post("/authentication/mobileVerifyOTP", mobileVerifyOTP)
     .post("/authentication/emailLogin", signInWithEmailAndPwd)
-    .post("/authentication/profileUpdate", profileUpdate)
-
-
-    // Job Detail - Done by Shubham - emp done
+    .post("/authentication/profileUpdate", profileUpdate) 
+    // Job Detail
     .get("/jobDetail", jobDetail)
     .get("/jobDetailID", jobDetailById)
     .get("/appliedJobDetails", appliedJobDetails)
-
-
-
     // Notification
     .get("/notification", notificationList)
     .get("/notification_read", notificationRead)
@@ -235,7 +211,7 @@ route.get("/state", stateList)
     .get("/send_faculity_skill_notification", sendFaculitySkillNotification)
     .get("/send_pack_subscription_notification", sendPackSubscriptionNotification)
     // .get("/send_pack_faculity_Search_notification", faculitySearchNotification)
-
+    
     // Packages
     .get("/packages", packagesList)
     .post("/generateOrderId", generateOrderId)
@@ -243,8 +219,8 @@ route.get("/state", stateList)
     // featured Data
     .get("/featuredData", featuredData)
     // Upload Files 
-    .post("/upload-image", uploadImage(UserLOGO).single('profile_image'), uploadProfileImageUser)
-    .post("/resume-upload", uploadDocument(UserResume).single("resume"), uploadResume)
+    .post("/upload-image", uploadImage(UserLOGO).single('profile_image'), uploadProfileImageUser) 
+    .post("/resume-upload", uploadDocument(UserResume).single("resume"), uploadResume) 
     // Blogs
     .get("/blogs", blogList)
     .get("/blogsByCategory", blogsByCategory)
@@ -275,28 +251,27 @@ route.get("/state", stateList)
     .get("/filter_stateCities/:id", filterStateCities)
     .get("/filter_stateList", filterStateList)
     .get("/app_welcome", appWelcome)
-    .get("/authCheck", authCheck)
-    .post("/verifyToken", verifyToken)
-    .get("/filterCatFuncationData", filterCatFuncationData)
-    .get("/stateWithCountry", stateWithCountry)
-    .get("/relevantJobFeedback", relevantJobFeedback)
-    .post("/appFeedback", appFeedback)
-    .post("/faculitySearchSave", faculitySearchSave)
-    .get("/faculitySearchList", faculitySearchList)
+    .get("/authCheck", authCheck) 
+    .post("/verifyToken", verifyToken) 
+    .get("/filterCatFuncationData", filterCatFuncationData) 
+    .get("/stateWithCountry",stateWithCountry)
+    .get("/relevantJobFeedback",relevantJobFeedback)
+    .post("/appFeedback",appFeedback)
+    .post("/faculitySearchSave", faculitySearchSave) 
+    .get("/faculitySearchList", faculitySearchList) 
 
-    .get("/areaByCity", areaByCity)
-    .post("/addAreaByCity", addAreaByCity)
+    .get("/areaByCity",areaByCity)
+    .post("/addAreaByCity",addAreaByCity)
 
-    .get("/getBannerType", getBannerType)
-    .get("/getBnneerByType", getBaneerByType)
+    .get("/getBannerType",getBannerType)
+    .get("/getBnneerByType",getBaneerByType)
 
-    .get("/testNotification", testNotification)
-    .get("/scheduleNotification", scheduleNotification)
-    .get("/birthdayNotification", birthdayNotification)
-    .get("/ChatGptKey", ChatGptKey)
-    .get("/faq-list", faqListUser)
-   
-// test
+    .get("/testNotification",testNotification)
+    .get("/scheduleNotification",scheduleNotification)
+    .get("/birthdayNotification",birthdayNotification)
+    .get("/ChatGptKey",ChatGptKey)
+    .get("/faq-list",faqListUser)
+    // test
 
 // .post("/authentication/registration-send-otp", registartionOTP)
 // .post("/authentication/registration-verify-otp", registartion)
