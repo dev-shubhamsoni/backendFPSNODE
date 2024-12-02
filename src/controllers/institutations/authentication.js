@@ -1,4 +1,4 @@
-const { sendError, sendSuccess } = require("../../utils/commonFunctions");
+const { sendError, sendSuccess, generateUserId, getEmployerIdByEnyId, replaceEmployerID } = require("../../utils/commonFunctions");
 const { runQuery } = require("../../utils/executeQuery");
 const { InstituteLOGO, UserResume } = require("../../utils/filesPath");
 const { isValidEmail, isValidMobileNumber, isValidPassword } = require("../../utils/validator");
@@ -116,6 +116,11 @@ exports.registrationSendOTP = async (req, res) => {
     const empidQuery = `SELECT LAST_INSERT_ID() AS employerID`;
     const empidResult = await runQuery(empidQuery);
     const empid = empidResult[0].employerID;
+
+    // generate employer Id
+    const empEnyID = generateUserId(empid);
+    const updateQuery = `UPDATE employer_user SET emp_eny_id = ? WHERE employerID = ?`;
+    runQuery(updateQuery, [empEnyID, empid]);
 
     const query2 = `INSERT INTO employer_details (
         employerID, 
@@ -253,8 +258,14 @@ exports.salesEnquiries = async (req, res) => {
 
 exports.emailVerificationSendOtp = async (req, res) => {
   try {
-    const { inst_id, email_id } = req.body;
+    const { inst_id: emp_id, email_id } = req.body;
+    
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const employee = await runQuery(`select * from employer_user where employerID = ?`, [inst_id]);
+    
     if (employee?.length == 0) {
       return sendError(res, { message: "employee not found" });
     }
@@ -305,7 +316,7 @@ exports.registrationVerifyOTP = async (req, res) => {
     await runQuery(query, [1, email_id]);
     const userData = await runQuery(`SELECT * FROM employer_user WHERE email = ?`, [email_id]);
     return sendSuccess(res, {
-      data: [createJWTToken(userData[0]), [userData[0].employerID]],
+      data: [createJWTToken(userData[0]), [userData[0].emp_eny_id]],
       message: "Verified successfully...",
     });
   } catch (error) {
@@ -367,7 +378,7 @@ exports.mobileSendOTP = async ({ body: { mobile_number, email_id } }, res) => {
       await runQuery(query, [otpBody.otp, email_id]);
 
       return sendSuccess(res, {
-        data: { email_id: email_id, success: 1, "hash_token": otpBody.fullHash, "user_id": emailData[0].id },
+        data: { email_id: email_id, success: 1, "hash_token": otpBody.fullHash, "user_id": emailData[0].emp_eny_id },
         message: "OTP has been sent...",
       });
     } else {
@@ -433,7 +444,7 @@ exports.mobileVerifyOTP = async ({ body: { mobile_number, phone_verified_otp, em
       console.log('queque', que);
 
       return sendSuccess(res, {
-        data: [createJWTToken(mobileData[0]), mobileData[0].employerID],
+        data: [createJWTToken(mobileData[0]), mobileData[0].emp_eny_id],
         message: "Congratulations, Your mobile number is verified...",
       });
 
@@ -450,7 +461,7 @@ exports.mobileVerifyOTP = async ({ body: { mobile_number, phone_verified_otp, em
       await runQuery(query, [1, fcm_token, email_id]);
 
       return sendSuccess(res, {
-        data: [createJWTToken(emailData[0]), emailData[0].employerID],
+        data: [createJWTToken(emailData[0]), emailData[0].emp_eny_id],
         message: "Congratulations, Your email is verified...",
       });
     } else {
@@ -469,7 +480,7 @@ exports.mobileVerifyOTP = async ({ body: { mobile_number, phone_verified_otp, em
       await runQuery(query, ["1", 1, fcm_token, commonData[0].mobile]);
 
       return sendSuccess(res, {
-        data: [createJWTToken(commonData[0]), commonData[0].employerID],
+        data: [createJWTToken(commonData[0]), commonData[0].emp_eny_id],
         message: "Congratulations, Your account is verified...",
       });
 
@@ -538,7 +549,7 @@ exports.mobileLoginVerifyOTP = async ({ body: { mobile_number, hash, otp, fcm_to
     const data = await runQuery(`select * from employer_user where mobile = ?`, [mobile_number]);
     //    console.log(data[0].employerID);
     return sendSuccess(res, {
-      data: [createJWTToken(data[0]), [data[0].employerID]],
+      data: [createJWTToken(data[0]), [data[0].emp_eny_id]],
       message: "You have loggedin successfully...",
     });
   } catch (error) {
@@ -564,7 +575,7 @@ exports.signInWithEmailAndPwd = async ({ body: { email, pwd, fcm_token = "NA" } 
         if (inputPasswordCheck) {
           await runQuery(`update employer_user set fcm_token = ? where  email= ?`, [fcm_token, email]);
           return sendSuccess(res, {
-            data: [createJWTToken(data[0]), [data[0].employerID], { email_verified: data[0]?.email_verified }],
+            data: [createJWTToken(data[0]), [data[0].emp_eny_id], { email_verified: data[0]?.email_verified }],
             message: "Login successfully...",
           });
         } else {
@@ -632,8 +643,13 @@ exports.verifyEmail = async ({ params: { token } }, res) => {
 // }
 
 //done
-exports.profile = async ({ body: { inst_id } }, res) => {
+exports.profile = async ({ body: { inst_id: emp_id } }, res) => {
   try {
+
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+    
     const [userData, employerDetails, subscriptionData] = await Promise.all([
       runQuery(`SELECT employer_user.*, tbl_categories.category as category_name FROM employer_user left JOIN tbl_categories on tbl_categories.ID = employer_user.category WHERE employerID=?`, [inst_id]),
       runQuery(`SELECT * FROM employer_details WHERE employerID=?`, [inst_id]),
@@ -652,7 +668,9 @@ exports.profile = async ({ body: { inst_id } }, res) => {
       employerDetails[0].empimage = imagePath;
       //  userData[0].current_plan = await runQuery(`SELECT * FROM selected_plans sp JOIN subscription_plans sps ON sp.plan_id = sps.plan_id WHERE inst_id = ? AND activation_plan IN ('processing', 'activated', 'expired') ORDER BY selection_date DESC LIMIT 1`, [inst_id]);
     }
-
+    userData[0].employerID = replaceEmployerID('employerID',emp_id,inst_id); 
+    employerDetails[0].employerID = replaceEmployerID('employerID',emp_id,inst_id); 
+    subscriptionData[0].employerID = replaceEmployerID('employerID',emp_id,inst_id); 
     const responseData = {
       userData: userData[0], // Assuming only one user is returned
       employerDetails: employerDetails[0], // Assuming only one employer detail is returned
@@ -697,17 +715,21 @@ exports.profile = async ({ body: { inst_id } }, res) => {
 //done
 exports.uploadProfileImage = async (req, res) => {
   try {
+    if (!req.body.inst_id) return sendError(res, { message: 'Please provide institute Id' })
     if (req.file !== undefined) {
-      const data = await runQuery(`select * from employer_details where employerID =?`, [req.body.inst_id]);
+      const inst_id = await getEmployerIdByEnyId(req.body.inst_id)
+      if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
+      const data = await runQuery(`select * from employer_details where employerID =?`, [inst_id]);
       if (data.length > 0 && data[0].inst_logo != null) {
         const imagePath = `${InstituteLOGO}/${data[0].inst_logo}`;
         fs.unlinkSync(imagePath);
       }
       await runQuery(`update employer_details set empimage = ? where employerID =?`, [
         req.file.filename,
-        req.body.inst_id,
+        inst_id,
       ]);
-      const updatedData = await runQuery(`select * from employer_details where employerID =?`, [req.body.inst_id]);
+      const updatedData = await runQuery(`select * from employer_details where employerID =?`, [inst_id]);
       return sendSuccess(res, {
         data: [`${InstituteLOGO}/${updatedData[0].empimage}`],
         message: "Images uploded succesfully...",
@@ -724,8 +746,10 @@ exports.uploadProfileImage = async (req, res) => {
 
 exports.otherDetails = async (req, res) => {
   try {
-    const { website, shift_start, shift_end, working_days, establish_year, salary_day, faculty_no, gst, brand_level, inst_id } = req.body;
-
+    const { website, shift_start, shift_end, working_days, establish_year, salary_day, faculty_no, gst, brand_level, inst_id:emp_id } = req.body;
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
 
     const employerDetails = await runQuery(`select * from employer_details where employerID = ?`, [inst_id])
     if (employerDetails.length > 0) {
@@ -743,6 +767,53 @@ exports.otherDetails = async (req, res) => {
     return sendSuccess(res, {
       data: [],
       message: "Details added...",
+    });
+  } catch (error) {
+    return sendError(res, { message: error.message });
+  }
+};
+
+exports.generateUserId = async (req, res) => {
+  try {
+    
+    const searchData = await runQuery(`select employerID, emp_eny_id from employer_user order by employerID asc limit 2000`, [])
+    await searchData.map(async row => {
+            
+        const ENCRYPTION_KEY = crypto.randomBytes(32); // Must be 32 bytes for AES-256
+        const IV = crypto.randomBytes(16); // Initialization vector, must be 16 bytes
+        userId = row.employerID;
+        const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
+        let encrypted = cipher.update(userId.toString(), 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        let enyIdOne = Math.floor(Math.random()*90000) + 10000;
+        let enyIdTwo = Math.floor(Math.random()*90000) + 10000;
+        enyID = enyIdOne+""+encrypted+""+enyIdTwo; 
+        
+        const updateQuery = `UPDATE employer_user SET emp_eny_id = ? WHERE employerID = ?`;
+        runQuery(updateQuery, [enyID, userId]);
+    });
+  } catch (error) {
+    return sendError(res, { message: error.message });
+  }
+};
+exports.generateJobsId = async (req, res) => {
+  try {
+    
+    const searchData = await runQuery(`select jobID, job_eny_id from jobs where job_eny_id is null order by jobID asc limit 2000 `, [])
+    await searchData.map(async row => {
+            
+        const ENCRYPTION_KEY = crypto.randomBytes(32); // Must be 32 bytes for AES-256
+        const IV = crypto.randomBytes(16); // Initialization vector, must be 16 bytes
+        userId = row.jobID;
+        const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
+        let encrypted = cipher.update(userId.toString(), 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        let enyIdOne = Math.floor(Math.random()*90000) + 10000;
+        let enyIdTwo = Math.floor(Math.random()*90000) + 10000;
+        enyID = enyIdOne+""+encrypted+""+enyIdTwo; 
+        
+        const updateQuery = `UPDATE jobs SET job_eny_id = ? WHERE jobID = ?`;
+        runQuery(updateQuery, [enyID, userId]);
     });
   } catch (error) {
     return sendError(res, { message: error.message });
@@ -772,7 +843,9 @@ exports.updateProfile = async ({ body: updateData }, res) => {
     if (!updateData.inst_id) {
       return sendError(res, { message: "Please provide Institute id." });
     }
-
+    updateData.inst_id = await getEmployerIdByEnyId(updateData.inst_id)
+    if (!updateData.inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+    
     const empProfileUpdate = [
       updateData.gst, updateData.official_name, moment().format('YYYY-MM-DD HH:mm:ss'), updateData.inst_id
     ]
@@ -787,7 +860,6 @@ exports.updateProfile = async ({ body: updateData }, res) => {
 
     let setClause = updateColumns.map((column) => `${column} = ?`).join(", ");
     const updateValues = updateColumns.map((column) => updateData[column]);
-
 
     setClause = setClause + ", shift_start = ?";
     updateValues.push(updateData.shift_start);
@@ -818,12 +890,17 @@ exports.updateProfile = async ({ body: updateData }, res) => {
 
 exports.updatePassword = async (req, res) => {
   try {
-    const { new_password, inst_id } = req.body;
+    const { new_password, inst_id:emp_id } = req.body;
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+
     if (!new_password) {
       return sendError(res, { message: "Please enter the new password..." });
     } else if (new_password.length < 6 || new_password.length > 12) {
       return sendError(res, { message: "Password length should be between 6 to 12 characters." });
     } else {
+      const inst_id = await getEmployerIdByEnyId(emp_id)
+      if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
       const pwd = await hashPassword(new_password);
       await runQuery(`update employer_user set password = ? where employerID = ?`, [pwd, inst_id]);
       return sendSuccess(res, { message: "New password has been set successfully." });
