@@ -1,4 +1,4 @@
-const { sendError, sendSuccess } = require("../../utils/commonFunctions");
+const { sendError, sendSuccess, getEmployerIdByEnyId } = require("../../utils/commonFunctions");
 const { runQuery } = require("../../utils/executeQuery");
 const { sendMailWithAttachment } = require("../../utils/mailHandler");
 const { generatePDF } = require("../../utils/pdfGenrate");
@@ -6,12 +6,17 @@ const { isBase64, isValidEmail } = require("../../utils/validator");
 
 exports.letterTemplateAdd = async (req, res) => {
   try {
-    const { inst_id, title, description } = req.body;
+    const { inst_id:emp_id, title, description } = req.body;
     if (!title) {
       return sendError(res, { message: "Please enter title..." });
     } else if (!description) {
       return sendError(res, { message: "Please enter description..." });
     }
+
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const query = `INSERT INTO letter_template (title,description,created_by,type) VALUES(?, ?, ?, ?)`;
     await runQuery(query, [title, description, inst_id, "Employee"]);
     return sendSuccess(res, {
@@ -45,8 +50,12 @@ exports.letterTemplateEdit = async (req, res) => {
 
 exports.letterTemplateGet = async (req, res) => {
   try {
-    const { inst_id } = req.body;
+    const { inst_id:emp_id } = req.body;
     const { status } = req.query;
+
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     let values = [inst_id];
     let query = `SELECT * FROM letter_template WHERE created_by = ?`;
     if (status) {
@@ -62,10 +71,15 @@ exports.letterTemplateGet = async (req, res) => {
     return sendError(res, { message: error.message });
   }
 };
+
 exports.letterTemplateGetById = async (req, res) => {
   try {
-    const { inst_id } = req.body;
+    const { inst_id:emp_id } = req.body;
     const { templateID } = req.params;
+    
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     let values = [inst_id, templateID];
     let query = `SELECT * FROM letter_template WHERE created_by = ? and id = ?`;
     const data = await runQuery(query, values);
@@ -96,7 +110,7 @@ exports.letterTemplateStatusUpdate = async (req, res) => {
 exports.letterAdd = async (req, res) => {
   try {
     const {
-      inst_id,
+      inst_id:emp_id,
       templateID,
       faculityID,
       faculity_name,
@@ -127,6 +141,10 @@ exports.letterAdd = async (req, res) => {
         return sendError(res, { message: "Please enter Subject..." });
       }
     }
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const query = `INSERT INTO letters (templateID,faculityID,faculity_name,description,employerID) VALUES(?, ?, ?, ?, ?)`;
     const letterData = await runQuery(query, [templateID, faculityID, faculity_name, description, inst_id]);
     if (send_mail) {
@@ -152,7 +170,7 @@ exports.letterAdd = async (req, res) => {
 
 exports.letterSendMail = async (req, res) => {
   try {
-    const { inst_id, letter_id, email_id, subject, body_content } = req.body;
+    const { inst_id:emp_id, letter_id, email_id, subject, body_content } = req.body;
     if (!email_id) {
       return sendError(res, { message: "Please enter Email Id..." });
     } else if (!isValidEmail(email_id)) {
@@ -164,6 +182,14 @@ exports.letterSendMail = async (req, res) => {
     } else if (!letter_id) {
       return sendError(res, { message: "Please enter letter_id..." });
     }
+
+    if (emp_id){
+      const inst_id = await getEmployerIdByEnyId(emp_id)
+    } else {
+      const inst_id = null;
+    }
+    
+  
     const letterData = await runQuery(
       "select letters.description, letter_template.title  from letters left join letter_template ON letters.templateID = letter_template.id where letters.id = ?",
       [letter_id]
@@ -192,7 +218,7 @@ exports.letterEdit = async (req, res) => {
   try {
     const { letterID } = req.params;
     const {
-      inst_id,
+      inst_id:emp_id,
       templateID,
       faculityID,
       faculity_name,
@@ -221,6 +247,14 @@ exports.letterEdit = async (req, res) => {
         return sendError(res, { message: "Please enter Subject..." });
       }
     }
+
+    if (emp_id){
+      const inst_id = await getEmployerIdByEnyId(emp_id)
+    } else {
+      const inst_id = null;
+    }
+
+
     const data = await runQuery(`SELECT * FROM letters WHERE id = ?`, letterID);
     if (data?.length == 0) {
       return sendError(res, { status: 404, message: "Record Not Found" });
@@ -249,8 +283,14 @@ exports.letterEdit = async (req, res) => {
 
 exports.letterGet = async (req, res) => {
   try {
-    const { inst_id } = req.body;
+    const { inst_id:emp_id } = req.body;
     const { status } = req.query;
+
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
+
     let values = [inst_id];
     let query = `SELECT * FROM letters WHERE employerID = ?`;
     if (status) {
@@ -268,8 +308,13 @@ exports.letterGet = async (req, res) => {
 };
 exports.letterGetById = async (req, res) => {
   try {
-    const { inst_id } = req.body;
+    const { inst_id:emp_id } = req.body;
     const { letterID } = req.params;
+    
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     let values = [inst_id, letterID];
     let query = `SELECT * FROM letters WHERE employerID = ? and id = ?`;
     const data = await runQuery(query, values);

@@ -9,7 +9,7 @@ const { createJWTToken } = require("../../utils/jwtHandler");
 const { generateToken, checkPhoneNumber, hasSixDigitsOnly } = require("./functions/functions");
 const { hashPassword, compareHashPassword } = require("../../utils/bcryptfunction");
 const { forgetPasswordMail, sendOtpMail, verifyEmail } = require("../../utils/mails");
-const { deleteFile, moveFileToUserFolder, } = require("../common");
+const { deleteFile, moveFileToUserFolder,  } = require("../common");
 const moment = require('moment');
 
 exports.registartionOTP = async ({ body: { phone_number } }, res) => {
@@ -119,7 +119,7 @@ exports.registration = async (req, res) => {
         }
 
         //  update eny Id
-        const enyId = await generateUserId(userId)
+        enyId = await generateUserId(userId)
         const updateQuery = `UPDATE faculity_users SET eny_id = ? WHERE faculityID = ?`;
         await runQuery(updateQuery, [enyId, userId]);
 
@@ -137,16 +137,10 @@ exports.profileUpdate = async (req, res) => {
 
     // if (!facultyID) return handleValidationError(res, "user id");
 
-    
     try {
-        
+
         if (!req.body.facultyID) {
             return sendError(res, { message: "Please enter user id..." })
-        }
-        
-        const faculty_ID = await generateUserIdByEnyId(req.body.facultyID);
-        if (!faculty_ID) {
-            return sendError(res, { message: "Invalid User!, Please login again." });
         }
 
         // userData = await runQuery(`SELECT faculityID, name, email, state, city, job_function, qualification, experience, salary, 
@@ -156,12 +150,12 @@ exports.profileUpdate = async (req, res) => {
 
         userData = await runQuery(`SELECT faculityID, name, email, state, city, job_function, qualification, experience, salary, 
             university, gender, passing_year, current_employer, dob, last_employer, demolecture, alternate_contact, 
-            teachingLevel, duration_notice_period, expected_salary, negotiable FROM faculity_users WHERE faculityID=?;`, [faculty_ID]);
+            teachingLevel, duration_notice_period, expected_salary, negotiable FROM faculity_users WHERE faculityID=?;`, [req.body.facultyID]);
 
-        userUpdateData = await runQuery(`SELECT * FROM faculity_updates WHERE faculityID=?;`, [faculty_ID]);
+        userUpdateData = await runQuery(`SELECT * FROM faculity_updates WHERE faculityID=?;`, [req.body.facultyID]);
 
         let checkData = [
-            faculityID = faculty_ID,
+            faculityID = req.body.facultyID,
             name = req.body.name,
             email = req.body.email,
             state = req.body.state,
@@ -183,7 +177,7 @@ exports.profileUpdate = async (req, res) => {
             expected_salary = req.body.expected_salary,
             negotiable = req.body.negotiable,
         ]
-
+         
         var updateStatus = false
         var user_data = userData[0]
         var lopCount = 0
@@ -218,12 +212,12 @@ exports.profileUpdate = async (req, res) => {
             (req.body.expected_salary) ? req.body.expected_salary : userData[0].expected_salary,
             (req.body.negotiable) ? req.body.negotiable : userData[0].negotiable,
             moment().format('YYYY-MM-DD HH:mm:ss'),
-            faculty_ID
-        ]
+            req.body.facultyID
+        ] 
 
-        oldUpdateRquest = await runQuery(`SELECT * FROM faculity_updates WHERE faculityID=?;`, [faculty_ID]);
-
-        if (oldUpdateRquest.length === 0) {
+        oldUpdateRquest = await runQuery(`SELECT * FROM faculity_updates WHERE faculityID=?;`, [req.body.facultyID]);
+       
+        if(oldUpdateRquest.length === 0){
             let updateUser = `UPDATE faculity_users SET name = ?, email = ?, state = ?, city = ?, job_function = ?, qualification = ?, experience = ?, salary = ?, 
             university = ?, gender = ?, passing_year = ?, current_employer = ?, dob = ?, last_employer = ?, demolecture = ?, alternate_contact = ?, 
             teachingLevel = ?, duration_notice_period = ?, expected_salary = ?, negotiable = ?, updated_at = ?  WHERE faculityID = ?`;
@@ -236,10 +230,10 @@ exports.profileUpdate = async (req, res) => {
 
             return sendSuccess(res, { data: [], message: "User details updated..." });
         }
-
+        
 
         if (updateStatus) {
-            if (!userUpdateData) {
+            if (!userUpdateData) {                
                 let updateUser = `UPDATE faculity_users SET name = ?, email = ?, state = ?, city = ?, job_function = ?, qualification = ?, experience = ?, salary = ?, 
                 university = ?, gender = ?, passing_year = ?, current_employer = ?, dob = ?, last_employer = ?, demolecture = ?, alternate_contact = ?, 
                 teachingLevel = ?, duration_notice_period = ?, expected_salary = ?, negotiable = ?, updated_at = ?  WHERE faculityID = ?`;
@@ -253,7 +247,7 @@ exports.profileUpdate = async (req, res) => {
             } else {
 
                 let submitData = [
-                    faculty_ID,
+                    req.body.facultyID,
                     (req.body.name) ? req.body.name : userData[0].name,
                     (req.body.email) ? req.body.email : userData[0].email,
                     (req.body.state) ? req.body.state : userData[0].state,
@@ -578,7 +572,7 @@ exports.mobileVerifyOTP = async (req, res) => {
             const main = {
                 status: "success",
                 loginToken: token,
-                UID: searchOtp[0].eny_id
+                UID: searchOtp[0].faculityID
             }
             return sendSuccess(res, { data: main, message: "Login successfully..." });
         } else {
@@ -589,12 +583,12 @@ exports.mobileVerifyOTP = async (req, res) => {
     }
 };
 
-exports.changePassword = async ({ body: { faculty_id: facultyId, old_password, new_password } }, res) => {
+exports.changePassword = async ({ body: { faculty_id:facultyId, old_password, new_password } }, res) => {
     try {
         // if (!isValidPassword(password)) {
         //     return sendError(res, { message: "Password is invalid. It must be at least six characters long and contain at least one numeric digit and one special character." })
         // }
-        if (!facultyId) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter User Id" });
         }
         if (!old_password) {
@@ -603,10 +597,7 @@ exports.changePassword = async ({ body: { faculty_id: facultyId, old_password, n
         if (!new_password) {
             return sendError(res, { message: "Please enter new password" });
         }
-        const faculty_ID = await generateUserIdByEnyId(facultyId);
-        if (!faculty_ID) {
-            return sendError(res, { message: "Invalid User!, Please login again." });
-        }
+        const faculty_id = generateUserIdByEnyId(facultyId)
         const data = await runQuery(`select * from faculity_users where faculityID = ?`, [faculty_id])
 
         const inputPasswordCheck = await compareHashPassword(old_password, data[0].password);
@@ -747,13 +738,9 @@ exports.signInWithEmailAndPwd = async (req, res) => {
                     }
 
                     // const JwtToken = createJWTToken(data[0], data[0].faculityID);
-                    const dataObj = data[0]
-                    const { eny_id, ...filteredDataObj } = dataObj;
+
                     const main = {
-                        data: {
-                            ...filteredDataObj,
-                            faculityID: eny_id
-                        },
+                        data: data[0],
                         token
                     }
                     return sendSuccess(res, {
@@ -835,18 +822,18 @@ exports.uploadResume = async (req, res) => {
 
     try {
         if (req.file !== undefined) {
-            const data = await runQuery(`select * from faculity_users where faculityID = ?`, [faculty_ID])
+            const data = await runQuery(`select * from faculity_users where faculityID = ?`, [req.body.facultyID])
             const phoneNumber = data[0]?.mobile
             const pathData = data[0]?.cv_doc
 
 
             if (data.length > 0) {
 
-                const delFilePath = `${process.env.USER_BASE_PATH}user${faculty_ID}/${pathData}`
+                const delFilePath = `${process.env.USER_BASE_PATH}user${req.body.facultyID}/${pathData}`
                 await deleteFile(delFilePath);
-                const newFilePath = await moveFileToUserFolder(uploadedFile.path, faculty_ID, UserResumeBasePath, phoneNumber);
+                const newFilePath = await moveFileToUserFolder(uploadedFile.path, req.body.facultyID, UserResumeBasePath, phoneNumber);
                 const updateQuery = `UPDATE faculity_users SET cv_doc = ? WHERE faculityID = ?`;
-                await runQuery(updateQuery, [newFilePath, faculty_ID]);
+                await runQuery(updateQuery, [newFilePath, req.body.facultyID]);
                 return sendSuccess(res, { message: "Resume has been uploaded..." })
             } else {
                 fs.unlinkSync(uploadedFile.path)
@@ -911,14 +898,17 @@ exports.suggestedProfileRequest = async (req, res) => {
 }
 exports.employerSalaryBreakdownSet = async (req, res) => {
     try {
-        const { employerID, deduction_key, deduction_value } = req.body
-        if (!employerID) {
+        const { employerID:emp_id, deduction_key, deduction_value } = req.body
+        if (!emp_id) {
             return sendError(res, { message: "Please enter employer ID..." })
         } else if (!deduction_key) {
             return sendError(res, { message: "Please enter deduction type..." })
         } else if (!deduction_value) {
             return sendError(res, { message: "Please enter deduction %..." })
         } else {
+            if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+            const employerID = await getEmployerIdByEnyId(emp_id)
+            if (!employerID) return sendError(res, { message: 'Invalid Institute ID' })
 
             const data = await runQuery(`select * from employer_salary_breakdown where employerID=? and deduction_key=?`, [employerID, deduction_key])
             if (data.length == 0) {
@@ -936,10 +926,13 @@ exports.employerSalaryBreakdownSet = async (req, res) => {
 }
 exports.employerSalaryBreakdownGet = async (req, res) => {
     try {
-        const { employerID } = req.query
-        if (!employerID) {
+        const { employerID:emp_id } = req.query
+        if (!emp_id) {
             return sendError(res, { message: "Please enter employer ID..." })
         } else {
+            const employerID = await getEmployerIdByEnyId(emp_id)
+            if (!employerID) return sendError(res, { message: 'Invalid Institute ID' })
+
             const data = await runQuery(`select * from employer_salary_breakdown where employerID=?`, [employerID])
             if (data.length > 0) {
                 return sendSuccess(res, { data: data, message: "data list..." })
@@ -1388,4 +1381,4 @@ exports.faculitySearchList = async (req, res) => {
         return sendError(res, { message: error.message })
     }
 }
-
+ 

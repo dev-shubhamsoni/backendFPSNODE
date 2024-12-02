@@ -1,4 +1,4 @@
-const { sendError, sendSuccess, sendPaginationSuccess, notificationMesssage } = require("../../utils/commonFunctions");
+const { sendError, sendSuccess, sendPaginationSuccess, notificationMesssage, getEmployerIdByEnyId, replaceEmployerID, replaceFacultyID, generateUserIdByEnyId } = require("../../utils/commonFunctions");
 const { isValidHtml, isValidDateFormat, isValidJson, isArrayCheck } = require("../../utils/validator");
 const { runQuery } = require("../../utils/executeQuery");
 const { employerApplyStatus } = require("../../utils/mails");
@@ -135,7 +135,7 @@ exports.createJob = async (req, res) => {
     const {
       latestPlanId,
       activePlan,
-      employerID,
+      employerID:emp_id,
       catID,
       functionID,
       job_title,
@@ -167,7 +167,7 @@ exports.createJob = async (req, res) => {
       benefits,
     } = req.body;
 
-    if (!employerID) {
+    if (!emp_id) {
       return sendError(res, { message: "Please provide the Employer..." });
     } else if (!catID) {
       return sendError(res, { message: "Please select the Category..." });
@@ -223,6 +223,9 @@ exports.createJob = async (req, res) => {
       return sendError(res, { message: "Please provide the experience range..." });
     } else {
       var slug = "";
+      const employerID = await getEmployerIdByEnyId(emp_id)      
+      if (!employerID) return sendError(res, { message: 'Invalid Institute ID' })
+
       if (job_title) {
         // const slugData =  await runQuery('SELECT jobID, job_title FROM jobs WHERE job_title = ?', [job_title], (error, results) => {
         const slugData = await runQuery(`SELECT jobID, job_title FROM jobs WHERE job_title = ?`, [job_title]);
@@ -331,7 +334,7 @@ exports.updateJob = async (req, res) => {
 
     let salary_u = getSalaryType(req.body.salary_type, req.body.min_salary, req.body.max_salary);
     const {
-      employerID,
+      employerID:emp_id,
       catID,
       functionID,
       job_title,
@@ -362,6 +365,11 @@ exports.updateJob = async (req, res) => {
       working_days,
       benefits,
     } = req.body;
+
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+
+    const employerID = await getEmployerIdByEnyId(emp_id)
+    if (!employerID) return sendError(res, { message: 'Invalid Institute ID' })
 
     let updateQuery = `UPDATE jobs SET `;
     let updateValues = [];
@@ -574,7 +582,7 @@ exports.updateJob = async (req, res) => {
 };
 
 //done by anuj
-exports.jobList = async ({ query, body: { inst_id } }, res) => {
+exports.jobList = async ({ query, body: { inst_id:emp_id } }, res) => {
   try {
     const {
       page = 1,
@@ -588,9 +596,13 @@ exports.jobList = async ({ query, body: { inst_id } }, res) => {
       order_by = "created_at",
       order_type = "DESC",
     } = query;
-    if (!inst_id) {
+    if (!emp_id) {
       return res.status(400).json({ status: false, message: "Employer ID is required." });
     }
+
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const pageSize = Number(limit) || 20;
     const offset = (Number(page) - 1) * pageSize;
     let raw_query = `SELECT 
@@ -640,6 +652,11 @@ SUM(CASE WHEN (t_app.status = 'Applied' OR t_app.status = 'Reviewed By FPS' OR t
       values
     );
     const totalJobs = totalJobsCount[0].total;
+
+    for (const value of jobs) {
+      value.employerID = replaceEmployerID('employerID',emp_id,inst_id); 
+    }
+    
     return sendPaginationSuccess(res, { data: jobs, total_data: totalJobs, message: "Job list..." });
   } catch (error) {
     return sendError(res, { message: error.message });
@@ -649,7 +666,7 @@ SUM(CASE WHEN (t_app.status = 'Applied' OR t_app.status = 'Reviewed By FPS' OR t
 exports.jobDetails = async ({ params: { jobId } }, res) => {
   try {
     const jobData = await runQuery(
-      `SELECT jobs.*, emp_user.name as emp_name, cat.category as cat_name, fun.function as fun_name FROM 
+      `SELECT jobs.*, emp_user.name as emp_name, emp_user.emp_eny_id as emp_eny_id, cat.category as cat_name, fun.function as fun_name FROM 
         jobs LEFT join employer_user as emp_user on jobs.employerID = emp_user.employerID LEFT JOIN tbl_categories as cat on jobs.catID = cat.ID 
         LEFT join tbl_functions as fun on jobs.functionID = fun.ID WHERE jobs.jobID =? `,
       [jobId]
@@ -663,6 +680,7 @@ exports.jobDetails = async ({ params: { jobId } }, res) => {
    
     if (jobData.length > 0) {
       jobData[0].benefits = benefits.map((benefit) => benefit.title); 
+      jobData[0].employerID = replaceEmployerID('employerID', jobData[0].emp_eny_id, jobData[0].employerID); 
     }
 
     return sendSuccess(res, { data: [jobData[0]], message: "Job details..." }); 
@@ -725,9 +743,29 @@ exports.applicationDetail = async ({ params: { job_id, apl_id } }, res) => {
       runQuery(`SELECT * FROM applied_jobs WHERE applyID = ?`, [apl_id]),
     ]);
 
+    const jobData = await Promise.all(
+      jobDetails.map(async (job) => {
+          const employerId = await replaceEmployerID('employerID', null, job.employerID);
+          return {
+              ...job,
+              employerID: employerId,
+          };
+      })
+    );
+    
+    const applicationData = await Promise.all(
+      application.map(async (user) => {
+          const faculityID = await replaceFacultyID('faculityID', null, user.faculityID);
+          return {
+              ...user,
+              faculityID: faculityID,
+          };
+      })
+    );
+    
     const responseData = {
-      jobDetails: jobDetails[0], // Assuming only one user is returned
-      application: application[0], // Assuming only one employer detail is returned
+      jobDetails: jobData, // Assuming only one user is returned
+      application: applicationData, // Assuming only one employer detail is returned
     };
 
     return sendSuccess(res, { data: responseData, message: "Profile..." });
@@ -836,8 +874,12 @@ exports.deleteScreenQuestion = async ({ params: { ques_id } }, res) => {
   }
 };
 
-exports.jobsHistory = async ({ query: { status, page = 1 }, body: { inst_id } }, res) => {
+exports.jobsHistory = async ({ query: { status, page = 1 }, body: { inst_id: emp_id } }, res) => {
   try {
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const pageSize = 20;
     const offset = (page - 1) * pageSize;
     let query = `select *,c.city_name,s.state_name from jobs j join cities c on j.city_id= c.city_id join states s on j.state_id=s.state_id where inst_id = ?`;
@@ -849,6 +891,8 @@ exports.jobsHistory = async ({ query: { status, page = 1 }, body: { inst_id } },
     query += ` LIMIT ? OFFSET ?`;
     values.push(parseInt(pageSize), offset);
     const data = await runQuery(query, values);
+    data.employerID = replaceEmployerID('employerID',emp_id,inst_id); 
+
     return sendSuccess(res, { data: data, message: "All jobs profiles.." });
   } catch (error) {
     return sendError(res, { message: error.message });
@@ -1064,7 +1108,12 @@ exports.createSheduledInteview = async (req, res) => {
 
 exports.getSheduledInteviewList = async ({ query, body }, res) => {
   try {
-    const { inst_id } = body;
+    const { inst_id : emp_id} = body;
+
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const { page = 1, limit = 20, search } = query;
     const pageSize = Number(limit) || 20;
     const offset = (Number(page) - 1) * pageSize;
@@ -1146,12 +1195,15 @@ AND latest_manual_scheduled_job.id = (
       filter_query += " AND faculity_users.name LIKE ?";
       values.push(`%${search}%`);
     }
+
     let main_query = raw_query + filter_query + ` GROUP BY applied_jobs.applyID ORDER BY applied_jobs.created_at`;
     main_query += ` LIMIT ? OFFSET ?`;
     const candiateList = await runQuery(main_query, [...values, parseInt(pageSize), offset]);
-    const newList = candiateList.map((ele) => {
+    const newList = candiateList.map(async (ele) => {
+      const faculityID = await replaceFacultyID('faculityID', null, ele?.faculityID);
       return {
         ...ele,
+        faculityID:faculityID,
         cv_doc:
           (ele?.cv_doc &&
             fs.existsSync(
@@ -1396,9 +1448,13 @@ AND latest_manual_scheduled_job.id = (
     main_query += ` LIMIT ? OFFSET ?`;
     const candiateList = await runQuery(main_query, [...values, parseInt(pageSize), offset]);
     /*  https://admin.fpsjob.com/sources/upload/userAttachment/user116486/8e029d43306ba3406416e59da73ae37a.pdf */
-    const newList = candiateList.map((ele) => {
+    const newList = candiateList.map(async (ele) => {
+      // const employerId = await replaceEmployerID('employerID', null, ele.employerID);
+      const faculityID = await replaceFacultyID('faculityID', null, ele?.faculityID);
       return {
         ...ele,
+        // employerId:employerId,
+        faculityID:faculityID,
         cv_doc:
           (ele?.cv_doc &&
             fs.existsSync(
@@ -1414,6 +1470,7 @@ AND latest_manual_scheduled_job.id = (
             ? `https://admin.fpsjob.com/sources/upload/userAttachment/user${ele?.faculityID}/${ele?.image}`
             : "",
         interview_steps: ele.interview_steps ? JSON.parse(ele.interview_steps) : [],
+
       };
     });
     const totalCandidateCount = await runQuery(
@@ -1458,9 +1515,16 @@ exports.appliedCandidateProfile = async ({ params: { applyId } }, res) => {
     const basicInfo = await runQuery(`SELECT * from faculty_basic_info where 	fact_info_id  = ?`, [
       appliedJob[0]?.faculityID,
     ]);
-    const newProfile = profile.map((ele) => {
+
+    for (const value of basicInfo) {
+      value.faculityID = replaceFacultyID('faculityID',faculty_id = null, basicInfo[0]?.faculityID); 
+    }
+  
+    const newProfile = profile.map(async (ele) => {
+      const faculityID = await replaceFacultyID('faculityID', null, ele?.faculityID);
       return {
         ...ele,
+        faculityID:faculityID,
         cv_doc:
           (ele?.cv_doc &&
             fs.existsSync(
@@ -1491,13 +1555,20 @@ exports.appliedCandidateProfile = async ({ params: { applyId } }, res) => {
 };
 exports.addToFavouriteJob = async (req, res) => {
   try {
-    const { inst_id, faculityID, jobID } = req.body;
+    const { inst_id:emp_id, faculityID:faculty_id, jobID } = req.body; 
 
-    if (!faculityID) {
+    if (!emp_id) {
+      return sendError(res, { message: "Please enter institute id..." });
+    } else if (!faculty_id) {
       return sendError(res, { message: "Please enter faculityID..." });
     } else if (!jobID) {
       return sendError(res, { message: "Please enter jobID..." });
     }
+    
+    const faculityID = await generateUserIdByEnyId(faculty_id)
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const alreadyExist = await runQuery("SELECT * FROM favourite_faculity WHERE faculityID = ? AND jobID = ?", [
       faculityID,
       jobID,
@@ -1515,14 +1586,16 @@ exports.addToFavouriteJob = async (req, res) => {
 };
 exports.addEmployerBenefits = async (req, res) => {
   try {
-    const { inst_id, benefits, benefits_other } = req.body;
+    const { inst_id:emp_id, benefits, benefits_other } = req.body;
 
-    if (!inst_id) {
+    if (!emp_id) {
       return sendError(res, { message: "Please enter institute id..." });
     } else if (!benefits) {
       return sendError(res, { message: "Please enter benefits..." });
     }
 
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
 
     await runQuery("DELETE FROM employer_benefits WHERE employerID = ?", [inst_id]);
     await benefits.map((x) => {
@@ -1605,8 +1678,14 @@ exports.lanuageList = async ({ params }, res) => {
   }
 };
 exports.faculityProfileView = async (req, res) => {
-  let { inst_id, applyID, view_field, log_type, jobID, faculityID } = req.body;
+  let { inst_id:emp_id, applyID, view_field, log_type, jobID, faculityID:faculty_id } = req.body;
   try {
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+      
+    const faculityID = await generateUserIdByEnyId(faculty_id)
+    if (!faculityID) return sendError(res, { message: 'Invalid faculity ID' })
+
     if (!view_field) {
       return sendError(res, { message: "Please enter view_field..." });
     }
@@ -1781,9 +1860,11 @@ exports.suggestedProfileList = async ({ body }, res) => {
     // main_query += ` LIMIT ?`;
     // const candiateList = await runQuery(main_query, [...values, ...orderValue, 50]);
     const candiateList = await runQuery(main_query, [...values, ...orderValue, parseInt(pageSize), offset]);
-    const newList = candiateList.map((ele) => {
+    const newList = candiateList.map(async (ele) => {
+      const faculityID = await replaceFacultyID('faculityID', null, ele?.faculityID);
       return {
         ...ele,
+        faculityID:faculityID,
         cv_doc:
           (ele?.cv_doc &&
             fs.existsSync(

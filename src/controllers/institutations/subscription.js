@@ -1,4 +1,4 @@
-const { sendError, sendSuccess, generateUniqueString } = require("../../utils/commonFunctions");
+const { sendError, sendSuccess, generateUniqueString, getEmployerIdByEnyId } = require("../../utils/commonFunctions");
 const { runQuery } = require("../../utils/executeQuery");
 const { BankPlanPurchaseTemplate, PlanPurchaseTemplate, sendMail } = require("../../utils/mailHandler");
 const { payApi } = require("../../utils/phonepeHandler");
@@ -129,8 +129,13 @@ const crypto = require("crypto");
 
 exports.plansList = async (req, res) => {
   try {
+
+    if (!req.body.inst_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(req.body.inst_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const query = `SELECT category FROM employer_user WHERE employerID = ?;`;
-    const data = await runQuery(query, [req.body.inst_id]);
+    const data = await runQuery(query, [inst_id]);
     // Fetch data from emp_packages table
     const nPlans = await runQuery(
       `
@@ -244,8 +249,13 @@ exports.plansList = async (req, res) => {
 
 //kaam baki hai
 
-exports.createOrder = async ({ body: { amount, currency_type, inst_id } }, res) => {
+exports.createOrder = async ({ body: { amount, currency_type, inst_id:emp_id } }, res) => {
   try {
+
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     if (amount < 1000) {
       return sendError(res, { message: "Please provide the valid amount..." });
     }
@@ -288,11 +298,15 @@ exports.createOrder = async ({ body: { amount, currency_type, inst_id } }, res) 
 };
 
 exports.validatePayment = async (
-  { body: { razorpay_order_id, razorpay_signature, razorpay_payment_id, inst_id, pack_id, option_id } },
+  { body: { razorpay_order_id, razorpay_signature, razorpay_payment_id, inst_id:emp_id, pack_id, option_id } },
   res
 ) => {
   // plan_id is main pack id and option_id is inner pack id
   try {
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     if (!razorpay_order_id) {
       return sendError(res, { message: "Please enter razorpay_order_id..." });
     } else if (!razorpay_signature) {
@@ -441,9 +455,13 @@ exports.validatePayment = async (
 };
 
 exports.validateBankPayment = async (
-  { body: { transaction_id, payment_type, amount, inst_id, pack_id, option_id } },
+  { body: { transaction_id, payment_type, amount, inst_id:emp_id, pack_id, option_id } },
   res
 ) => {
+  if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+  const inst_id = await getEmployerIdByEnyId(emp_id)
+  if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
   try {
     if (!transaction_id) {
       return sendError(res, { message: "Please enter transaction_id..." });

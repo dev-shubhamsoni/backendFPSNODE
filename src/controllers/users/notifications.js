@@ -1,4 +1,4 @@
-const { sendError, sendSuccess, getDateFormat } = require("../../utils/commonFunctions");
+const { sendError, sendSuccess, getDateFormat, generateUserIdByEnyId, replaceFacultyID } = require("../../utils/commonFunctions");
 const { runQuery } = require("../../utils/executeQuery");
 const { isValidJson } = require("../../utils/validator");
 const WORK_PLACE_TYPE = ["On-Site", "Hybrid", "Remote"]
@@ -9,13 +9,14 @@ const { sendNotificationToFaculity } = require("../../utils/firebaseHandler");
 exports.notificationList = async (req, res) => {
     try {
         const {
-            facultyID,
+            facultyID:faculty_id,
         } = req.query;
 
-        if (!facultyID) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter your user id name..." })
         }
 
+        const facultyID = await generateUserIdByEnyId(faculty_id)
         const notification = await runQuery(`SELECT CONVERT(notification.NID, CHAR(20)) as NID, CONVERT(notification.faculityID, CHAR(20)) as faculityID, 
             notification.title, notification.message, notification.type, 
             notification.linkID, notification.created_at, CONVERT(notification.status, CHAR(20)) as status, 
@@ -30,6 +31,7 @@ exports.notificationList = async (req, res) => {
                         LIMIT 20`, [facultyID, facultyID])
 
         notification.forEach(item => {
+            item.faculityID = replaceFacultyID('faculityID',faculty_id,facultyID); 
             item.created_at = getDateFormat(item.created_at)
         });
         const responseData = {
@@ -44,7 +46,7 @@ exports.notificationList = async (req, res) => {
 exports.notificationRead = async (req, res) => {
     try {
         const {
-            facultyID,
+            facultyID:faculty_id,
             notification_id
         } = req.query;
 
@@ -55,6 +57,7 @@ exports.notificationRead = async (req, res) => {
             const query = `UPDATE notification SET status = 2 WHERE status != 3 AND NID = ?`
             await runQuery(query, [notification_id])
         } else {
+            const facultyID = await generateUserIdByEnyId(faculty_id)
             const query = `UPDATE notification SET status = 2 WHERE status != 3 AND faculityID =?`
             await runQuery(query, [facultyID])
         }
@@ -67,11 +70,12 @@ exports.notificationRead = async (req, res) => {
 exports.notificationDelete = async (req, res) => {
     try {
         const {
-            facultyID,
+            facultyID:faculty_id,
             notification_id
         } = req.query;
 
         if (facultyID) {
+          const facultyID = await generateUserIdByEnyId(faculty_id)
           const query = `DELETE FROM notification WHERE faculityID = ?`
           await runQuery(query, [facultyID])
         } else {

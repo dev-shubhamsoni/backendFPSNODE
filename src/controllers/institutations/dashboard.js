@@ -1,11 +1,16 @@
 const fs = require("fs");
-const { sendError, sendSuccess, sendPaginationSuccess } = require("../../utils/commonFunctions");
+const { sendError, sendSuccess, sendPaginationSuccess, getEmployerIdByEnyId } = require("../../utils/commonFunctions");
 const { runQuery } = require("../../utils/executeQuery");
 const { isValidEmail, isValidMobileNumber } = require("../../utils/validator");
 
 //done
-exports.dashbaord = async ({ body: { inst_id } }, res) => {
+exports.dashbaord = async ({ body: { inst_id:emp_id } }, res) => {
   try {
+
+    if (!emp_id) return sendError(res, { message: 'Please provide institute Id' })
+    const inst_id = await getEmployerIdByEnyId(emp_id)
+    if (!inst_id) return sendError(res, { message: 'Invalid Institute ID' })
+
     const totalJobs = await runQuery(`SELECT COUNT(*) AS count FROM jobs WHERE employerID = ?`, [inst_id]);
     const activeJobs = await runQuery(`SELECT COUNT(*) AS count FROM jobs WHERE status = ? AND employerID = ?`, [
       1,
