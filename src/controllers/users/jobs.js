@@ -1,4 +1,4 @@
-const { sendError, sendSuccess, getDateFormat, convertToAmPm } = require("../../utils/commonFunctions");
+const { sendError, sendSuccess, getDateFormat, convertToAmPm, generateUserIdByEnyId, getEmployerIdByEmployerID, getEnyIdByJobId } = require("../../utils/commonFunctions");
 const { applyJobMail, employerApplyJobMail } = require("../../utils/mails");
 const { runQuery } = require("../../utils/executeQuery");
 const { isValidJson } = require("../../utils/validator");
@@ -6,11 +6,12 @@ const WORK_PLACE_TYPE = ["On-Site", "Hybrid", "Remote"]
 const JOBS_TYPE = ["Full Time", "Part Time", "Contract", "Hourly Basis", "Internship"]
 const moment = require('moment');
 const { sendNotificationToFaculity } = require("../../utils/firebaseHandler");
+const crypto = require("crypto")
 
 exports.filterJobs = async (req, res) => {
     try {
         const {
-            facultyID,
+            facultyID: faculty_id,
             state,
             city,
             job_title,
@@ -27,7 +28,7 @@ exports.filterJobs = async (req, res) => {
             categoryID
         } = req.query;
 
-        const facID = facultyID || 103082
+        const facID = await generateUserIdByEnyId(faculty_id) || "95140c036dc3456e8a14ebd5aef679b94f04534907"
 
         const exdate = new Date().toISOString().split('T')[0];
         const packQuery = `SELECT type FROM pack_subscription WHERE faculityID = ? AND status = '1' AND end_date > ? ORDER BY SID DESC`;
@@ -92,7 +93,7 @@ exports.filterJobs = async (req, res) => {
             values.push(...states);
             countValues.push(...states);
         }
-        
+
         if (city) {
             const cities = city.split(',').map(city => city.trim());
             query += ` AND city IN (${cities.map(() => '?').join(', ')})`;
@@ -136,12 +137,12 @@ exports.filterJobs = async (req, res) => {
             countValues.push(parseInt(max_experience));
         }
 
-        if (job_type) {            
+        if (job_type) {
             const job_types = job_type.split(',').map(job_type => job_type.trim());
             query += ` AND job_type in (?)`;
             countQuery += ` AND job_type in (?)`;
             values.push(job_types);
-            countValues.push(job_types); 
+            countValues.push(job_types);
         }
 
         if (categoryID) {
@@ -152,13 +153,13 @@ exports.filterJobs = async (req, res) => {
         }
 
         if (job_function) {
-            
+
             const job_functions = job_function.split(',').map(job_function => job_function.trim());
-            
+
             const functionQuery = `SELECT GROUP_CONCAT(ID) as ID FROM tbl_functions WHERE function in (?)`;
             const functionValues = [job_functions];
             const functionResult = await runQuery(functionQuery, functionValues);
-           
+
             if (functionResult.length > 0) {
                 const functionID = functionResult[0].ID;
                 query += ` AND functionID in (?)`;
@@ -172,7 +173,7 @@ exports.filterJobs = async (req, res) => {
                 countValues.push(job_function);
             }
         }
-        
+
         if (employer_name) {
             query += ` AND employer_user.name LIKE ?`;
             countQuery += ` AND employer_user.name LIKE ?`;
@@ -197,12 +198,21 @@ exports.filterJobs = async (req, res) => {
             element.created_at = getDateFormat(element.created_at)
         });
 
-        const jobsList = data.map(job => ({
-            ...job,
-            pack_type: pack.type ? pack.type : ''
-            // pack_type: pack.type
-        }));
-        
+        const employerId = await getEmployerIdByEmployerID(data[0].employerID);
+
+
+        const jobsList = await Promise.all(
+            data.map(async (job) => {
+                const jobIDEnc = await getEnyIdByJobId(job.jobID);
+                return {
+                    ...job,
+                    pack_type: pack.type ? pack.type : '',
+                    employerID: employerId,
+                    jobID: jobIDEnc
+                };
+            })
+        );
+
 
         const responseData = {
             jobsList,
@@ -219,16 +229,22 @@ exports.filterJobs = async (req, res) => {
 
 exports.jobDetail = async (req, res) => {
     const {
-        facultyID,
+        facultyID: faculty_id,
         jobID
     } = req.query;
 
-    if (!facultyID) {
+    if (!faculty_id) {
         return sendError(res, { message: "Please enter your user id..." })
     } else if (!jobID) {
         return sendError(res, { message: "Please enter your Job id..." })
     }
+
+
+
     try {
+
+        const facultyID = await generateUserIdByEnyId(faculty_id)
+
         let jobQuery = ` SELECT jobs.*, employer_user.name, employer_user.hide_status, employer_user.brand_level, employer_details.website, employer_details.address, 
         employer_details.working_days as employer_working_days, employer_details.shift_start as employer_shift_start, employer_details.shift_end as employer_shift_end, 
         COALESCE(applied_jobs.status, 0) as appliedStatus, COALESCE(favourite_jobs.favourite, 0) as favourite, 
@@ -236,7 +252,7 @@ exports.jobDetail = async (req, res) => {
         tbl_categories.show_all, UPPER(REPLACE(tbl_categories.category, "jobs", "")) as category_title, 
         employer_details.establish_year as employer_establish_year, employer_details.level as employer_level, employer_details.employer_detail as employer_detail, 
         employer_details.faculty_no as no_of_employee, employer_details.salary_day as employer_salary_day, tbl_functions.function as job_functions
-            FROM jobs
+        FROM jobs
             LEFT JOIN tbl_qualifications ON tbl_qualifications.ID=jobs.qualification
             LEFT JOIN employer_user ON employer_user.employerID=jobs.employerID
             LEFT JOIN employer_details ON employer_details.employerID=jobs.employerID
@@ -248,7 +264,7 @@ exports.jobDetail = async (req, res) => {
 
         const jobQueryValue = [facultyID, facultyID, jobID];
         const job = await runQuery(jobQuery, jobQueryValue);
-
+        console.log('jobjob', facultyID, facultyID, jobID);
 
         const facultyUser = await runQuery(`SELECT faculity_users.update_status, faculity_users.device_type, faculity_users.regToken, faculity_users.cv_doc, faculity_users.duration_notice_period
                             FROM faculity_users
@@ -259,26 +275,38 @@ exports.jobDetail = async (req, res) => {
             update_status = facultyUser[0].update_status;
         }
 
-        const benefits = await runQuery(`SELECT CONCAT('` + process.env.FILE_BASE_URL + `sources/upload/benefitsImg/',benefits.icon) as icon, benefits.title FROM job_benefits LEFT JOIN benefits on benefits.id = job_benefits.benefitID WHERE job_benefits.jobID = ?`, [job[0].jobID])
-        const employerBenefits = await runQuery(`SELECT CONCAT('` + process.env.FILE_BASE_URL + `sources/upload/benefitsImg/',benefits.icon) as icon, benefits.title FROM benefits LEFT JOIN job_benefits on job_benefits.benefitID = benefits.id WHERE job_benefits.employerID = ? GROUP By benefits.id;`, [job[0].employerID])
-        
+
+        const benefits = await runQuery(`SELECT CONCAT('` + process.env.FILE_BASE_URL + `sources/upload/benefitsImg/',benefits.icon) as icon, benefits.title FROM job_benefits LEFT JOIN benefits on benefits.id = job_benefits.benefitID WHERE job_benefits.jobID = ?`, [job[0]?.jobID])
+        const employerBenefits = await runQuery(`SELECT CONCAT('` + process.env.FILE_BASE_URL + `sources/upload/benefitsImg/',benefits.icon) as icon, benefits.title FROM benefits LEFT JOIN job_benefits on job_benefits.benefitID = benefits.id WHERE job_benefits.employerID = ? GROUP By benefits.id;`, [job[0]?.employerID])
+
         const exdate = new Date().toISOString().split('T')[0];
         const packQuery = `
-            SELECT type
-            FROM pack_subscription
-            WHERE faculityID = ?
-            AND status = '1'
-            AND end_date > ?
-            ORDER BY SID DESC
+        SELECT type
+        FROM pack_subscription
+        WHERE faculityID = ?
+        AND status = '1'
+        AND end_date > ?
+        ORDER BY SID DESC
             LIMIT 1
         `;
         const packValues = [facultyID, exdate];
         const packResult = await runQuery(packQuery, packValues);
         const pack = packResult.length ? packResult[0] : "";
 
-        
+        // const employerID = await getEmployerIdByEmployerID(job[0]?.employerID);
+        const empID = await runQuery(`SELECT emp_eny_id from employer_user where employerID  = ?`, [job[0]?.employerID])
+        const jobIDEnc = await getEnyIdByJobId(job[0].jobID);
+
+
+
+        const spread = {
+            ...job[0],
+            employerID: empID[0]?.emp_eny_id,
+            jobID: jobIDEnc
+        }
+
         const responseData = {
-            job : job[0],
+            job: spread,
             update_status: update_status,
             device_type: facultyUser[0].device_type,
             cv_doc: facultyUser[0].cv_doc,
@@ -288,24 +316,30 @@ exports.jobDetail = async (req, res) => {
             benefits: benefits,
             employer_benefits: employerBenefits
         };
+
         return sendSuccess(res, { data: responseData, message: "Job data..." });
+
     } catch (error) {
+
         return sendError(res, { message: error.message });
+
     }
 };
 
+
 exports.jobDetailById = async (req, res) => {
     const {
-        facultyID,
+        facultyID: faculty_id,
         jobID
     } = req.query;
 
-    if (!facultyID) {
+    if (!faculty_id) {
         return sendError(res, { message: "Please enter your user id..." })
     } else if (!jobID) {
         return sendError(res, { message: "Please enter your Job id..." })
     }
     try {
+        const facultyID = await generateUserIdByEnyId(faculty_id)
         let jobQuery = ` SELECT jobs.*, employer_user.name, employer_user.hide_status, employer_user.brand_level, employer_details.website, employer_details.address, 
         employer_details.working_days as employer_working_days, employer_details.shift_start as employer_shift_start, employer_details.shift_end as employer_shift_end, 
         COALESCE(applied_jobs.status, 0) as appliedStatus, COALESCE(favourite_jobs.favourite, 0) as favourite, applied_jobs.result, applied_jobs.applyID, 
@@ -320,7 +354,7 @@ exports.jobDetailById = async (req, res) => {
             LEFT JOIN favourite_jobs ON favourite_jobs.jobID=jobs.jobID AND favourite_jobs.faculityID= ?
             LEFT JOIN tbl_categories ON tbl_categories.ID = jobs.catID
             LEFT JOIN tbl_functions ON tbl_functions.ID = jobs.functionID
-            WHERE jobs.jobID = ?`;
+            WHERE jobs.job_eny_id = ?`;
 
         const jobQueryValue = [facultyID, facultyID, jobID];
         const job = await runQuery(jobQuery, jobQueryValue);
@@ -337,7 +371,7 @@ exports.jobDetailById = async (req, res) => {
 
         const benefits = await runQuery(`SELECT CONCAT('` + process.env.FILE_BASE_URL + `sources/upload/benefitsImg/',benefits.icon) as icon , benefits.title FROM job_benefits LEFT JOIN benefits on benefits.id = job_benefits.benefitID WHERE job_benefits.jobID = ?`, [job[0].jobID])
         const employerBenefits = await runQuery(`SELECT CONCAT('` + process.env.FILE_BASE_URL + `sources/upload/benefitsImg/',benefits.icon) as icon, benefits.title FROM benefits LEFT JOIN job_benefits on job_benefits.benefitID = benefits.id WHERE job_benefits.employerID = ? GROUP By benefits.id;`, [job[0].employerID])
-        
+
         const exdate = new Date().toISOString().split('T')[0];
         const packQuery = `
             SELECT type
@@ -364,10 +398,19 @@ exports.jobDetailById = async (req, res) => {
         // if(job[0].employer_shift_end !== null && job[0].employer_shift_end !== "00:00:00"){
         //     job[0].employer_shift_end = convertToAmPm(job[0].employer_shift_end)
         // }
-        
-        
+
+        const employerID = await getEmployerIdByEmployerID(job[0].employerID);
+        const jobIDEnc = await getEnyIdByJobId(job[0].jobID);
+
+
+        const spread = {
+            ...job[0],
+            employerID,
+            jobID: jobIDEnc
+        };
+
         const responseData = {
-            job : job[0],
+            job: spread,
             update_status: update_status,
             device_type: facultyUser[0].device_type,
             cv_doc: facultyUser[0].cv_doc,
@@ -383,20 +426,20 @@ exports.jobDetailById = async (req, res) => {
     }
 };
 
-
 exports.appliedJobDetails = async (req, res) => {
     try {
         const {
-            facultyID,
+            facultyID: faculty_id,
             applyID
         } = req.query;
 
-        if (!facultyID) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter your user id..." })
         } else if (!applyID) {
             return sendError(res, { message: "Please enter your apply id..." })
         }
 
+        const facultyID = await generateUserIdByEnyId(faculty_id)
         let jobQuery = ` SELECT jobs.*, applied_jobs.status as appliedStatus, applied_jobs.created_at as appliedDate, applied_jobs.result, applied_jobs.score, applied_jobs.preference_date1, 
         applied_jobs.preference_date1, applied_jobs.interview_date, applied_jobs.expected_joining_date, applied_jobs.applyID, COALESCE(favourite_jobs.favourite, 0) as favourite, 
         employer_details.address, employer_details.state as employer_state, employer_details.city as employer_city, employer_details.contact_person_name, employer_details.contact_person_no, 
@@ -440,6 +483,7 @@ exports.appliedJobDetails = async (req, res) => {
         job[0].preference_date1 = getDateFormat(job[0].preference_date1)
         job[0].interview_date = getDateFormat(job[0].interview_date)
         job[0].expected_joining_date = getDateFormat(job[0].expected_joining_date)
+
         const responseData = {
             job,
             // update_status: update_status,
@@ -449,7 +493,16 @@ exports.appliedJobDetails = async (req, res) => {
             // duration_notice_period: facultyUser[0].duration_notice_period,
             // pack_type: pack.type,
         };
-        return sendSuccess(res, { data: job, message: "Job data..." });
+        const employerID = await getEmployerIdByEmployerID(job[0].employerID);
+        const jobIDEnc = await getEnyIdByJobId(job[0]?.jobID);
+        const spread = {
+
+            ...job[0],
+            employerID,
+            jobID:jobIDEnc
+        }
+
+        return sendSuccess(res, { data: spread, message: "Job data..." });
     } catch (error) {
         return sendError(res, { message: error.message });
     }
@@ -459,12 +512,13 @@ exports.appliedJobs = async (req, res) => {
     try {
 
         const {
-            facultyID,
+            facultyID: faculty_id,
         } = req.query;
 
-        if (!facultyID) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter your user id..." })
         }
+        const facultyID = await generateUserIdByEnyId(faculty_id)
 
         const jobs = await runQuery(`SELECT jobs.*, applied_jobs.status as appliedStatus, applied_jobs.created_at as appliedDate, applied_jobs.result, applied_jobs.score, applied_jobs.preference_date1, applied_jobs.preference_date1, applied_jobs.interview_date, applied_jobs.expected_joining_date, applied_jobs.applyID, COALESCE(favourite_jobs.favourite, 0) as favourite, employer_details.address, employer_details.state as employer_state, employer_details.city as employer_city, employer_details.contact_person_name, employer_details.contact_person_no, employer_user.name as company_name, CONCAT("https://admin.fpsjob.com/", "sources/upload/catImg/", tbl_categories.image) as category_images, UPPER(REPLACE(tbl_categories.category, "jobs", "")) as category_title, tbl_categories.show_all
                                     FROM applied_jobs
@@ -496,14 +550,32 @@ exports.appliedJobs = async (req, res) => {
             //     element.updated_at = getDateFormat(element.updated_at)
             //     element.created_at = getDateFormat(element.created_at)
             // });
+            const employerID = await getEmployerIdByEmployerID(jobs[0].employerID)
 
-            jobs.forEach(item => {
-                item.pack_type = pack.type ? pack.type : ''
-                item.updated_at = getDateFormat(item.updated_at)
-                item.created_at = getDateFormat(item.created_at)
-            });
-            
-            return sendSuccess(res, { data: jobs, message: "Applied jobs..." })
+            const jobsData = await Promise.all(
+                jobs.map(async (job) => {
+                    const jobID = await getEnyIdByJobId(job.jobID);
+                    return {
+                        ...job,
+                        pack_type: pack.type ? pack.type : '',
+                        updated_at: getDateFormat(job.updated_at),
+                        created_at: getDateFormat(job.created_at),
+                        employerID,
+                        jobID
+                    };
+                })
+            );
+
+            // jobs.forEach(item => {
+            //     item.pack_type = pack.type ? pack.type : ''
+            //     item.updated_at = getDateFormat(item.updated_at)
+            //     item.created_at = getDateFormat(item.created_at)
+            //     item.employerID = getEmployerIdByEmployerID(item.employerID)
+            //     // item.jobID = getEnyIdByJobId(item.jobID);
+
+            // });
+
+            return sendSuccess(res, { data: jobsData, message: "Applied jobs..." })
         } else {
             return sendSuccess(res, { data: jobs, message: "No apply job found..." })
         }
@@ -511,6 +583,7 @@ exports.appliedJobs = async (req, res) => {
         return sendError(res, { message: error.message })
     }
 }
+
 
 exports.appliedJobsStatus = async (req, res) => {
     try {
@@ -535,7 +608,7 @@ exports.appliedJobsStatus = async (req, res) => {
             LEFT JOIN manual_sheduled_job ON manual_sheduled_job.jobID = applied_jobs.jobID
             WHERE applyID = ?
         `, [applyID]);
-         
+
         if (currentStatus.length > 0) {
             const exdate = new Date().toISOString().split('T')[0];
             const packQuery = `
@@ -547,7 +620,7 @@ exports.appliedJobsStatus = async (req, res) => {
                 ORDER BY SID DESC
                 LIMIT 1
             `;
-            
+
             const packValues = [currentStatus[0].faculityID, exdate];
             const packResult = await runQuery(packQuery, packValues);
             const pack = packResult.length ? packResult[0] : null;
@@ -587,7 +660,7 @@ exports.appliedJobsStatus = async (req, res) => {
                     WHERE applied_id = ? AND status = ?
                 `, [applyID, step.label]);
                 step.completed = statusData.length > 0 ? 1 : 0;
-                
+
                 if (statusData.length > 0) {
                     created_at = statusData[0].created_at
                     // const options = {
@@ -605,30 +678,47 @@ exports.appliedJobsStatus = async (req, res) => {
                     // step.created_at = statusData[0].created_at;
                 }
 
-                if(statusData[0] !== undefined){
-                    if(statusData[0].status === 'Interview scheduled'){
+                if (statusData[0] !== undefined) {
+                    if (statusData[0].status === 'Interview scheduled') {
                         step.date = currentStatus[0].interview_date,
-                        step.time = currentStatus[0].interview_time,
-                        step.event_type = currentStatus[0].interview_event_type,
-                        step.event_host = currentStatus[0].interview_event_host,
-                        step.interviewer = currentStatus[0].interview_interviewer,
-                        step.note = currentStatus[0].interview_note
+                            step.time = currentStatus[0].interview_time,
+                            step.event_type = currentStatus[0].interview_event_type,
+                            step.event_host = currentStatus[0].interview_event_host,
+                            step.interviewer = currentStatus[0].interview_interviewer,
+                            step.note = currentStatus[0].interview_note
                     }
                 }
             }
-            const returnData = {
-                data,
-                show_all: currentStatus[0].show_all,
-                pack_type: currentStatus[0].pack_type
-            }; 
 
-            // Add final status if applicable
+
+            let returnData;
+
             if (finalStatus) {
-                returnData.data.push(finalStatus);
-                return sendSuccess(res, { data: returnData, message: "Applied jobs..." });
-            } else {                 
-                return sendSuccess(res, { data: returnData, message: "Applied jobs..." });
+
+                returnData = {
+                    ...data,
+                    show_all: currentStatus[0].show_all,
+                    pack_type: currentStatus[0].pack_type,
+
+                    finalStatus
+                };
+
+            } else {
+
+                returnData = {
+                    ...data,
+                    show_all: currentStatus[0].show_all,
+                    pack_type: currentStatus[0].pack_type,
+
+
+                };
+
             }
+
+
+            return sendSuccess(res, { data: returnData, message: "Applied jobs..." });
+
+
         } else {
             return sendSuccess(res, { data: [], message: "No apply job found..." });
         }
@@ -637,21 +727,25 @@ exports.appliedJobsStatus = async (req, res) => {
     }
 };
 
+
 exports.addFavourite = async (req, res) => {
     try {
-        const { facultyID, jobID  } = req.body;
+        const { facultyID: faculty_id, jobID } = req.body;
 
-        if (!facultyID) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter your user ID..." });
         }
         if (!jobID) {
             return sendError(res, { message: "Please enter your job ID..." });
         }
+        const facultyID = await generateUserIdByEnyId(faculty_id)
+
         currentDate = moment().format('YYYY-MM-DD HH:mm:ss')
-        const queryStatus = await runQuery(`insert into favourite_jobs set faculityID=?, jobID=?, favourite=?, created_at=?`, [facultyID, jobID, 1, currentDate])
-        
+        const jobIDNoEnc = await runQuery(`select jobID from jobs where job_eny_id=?`, [jobID]);
+        const queryStatus = await runQuery(`insert into favourite_jobs set faculityID=?, jobID=?, favourite=?, created_at=?`, [facultyID, jobIDNoEnc[0]?.jobID, 1, currentDate])
+
         if (queryStatus.insertId) {
-                return sendSuccess(res, { data: [], message: "Job added to favourite..." });
+            return sendSuccess(res, { data: [], message: "Job added to favourite..." });
         } else {
             return sendError(res, { data: [], message: "Something went wrong. Please try again later..." });
         }
@@ -663,18 +757,20 @@ exports.addFavourite = async (req, res) => {
 
 exports.removeFavourite = async (req, res) => {
     try {
-        const { facultyID, jobID  } = req.body;
+        const { facultyID: faculty_id, jobID } = req.body;
 
-        if (!facultyID) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter your user ID..." });
         }
         if (!jobID) {
             return sendError(res, { message: "Please enter your job ID..." });
         }
-       
-        const queryStatus = await runQuery(`DELETE FROM favourite_jobs WHERE faculityID=? and jobID=?`, [facultyID, jobID])
+
+        const facultyID = await generateUserIdByEnyId(faculty_id)
+        const jobIDNoEnc = await runQuery(`select jobID from jobs where job_eny_id=?`, [jobID]);
+        const queryStatus = await runQuery(`DELETE FROM favourite_jobs WHERE faculityID=? and jobID=?`, [facultyID, jobIDNoEnc[0]?.jobID])
         return sendSuccess(res, { data: [], message: "Job removed to favourite..." });
-       
+
     } catch (error) {
         return sendError(res, { message: error.message });
     }
@@ -682,28 +778,29 @@ exports.removeFavourite = async (req, res) => {
 
 exports.allFavourite = async (req, res) => {
     try {
-        const { facultyID, order_by  } = req.query;
+        const { facultyID: faculty_id, order_by } = req.query;
 
-        if (!facultyID) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter your user ID..." });
         }
-        
+
         if (order_by) {
-            order_by_query = "fev_created_at "+order_by
+            order_by_query = "fev_created_at " + order_by
         } else {
             order_by_query = "fev_created_at DESC"
         }
 
+        const facultyID = await generateUserIdByEnyId(faculty_id)
         var query = `SELECT jobs.*, COALESCE(favourite_jobs.favourite, 0) as favourite, tbl_categories.show_all,employer_user.name as company_name, 
                                 UPPER(REPLACE(tbl_categories.category, "jobs", "")) as category_title, applied_jobs.status as appliedStatus, 
                                 CONCAT("https://admin.fpsjob.com/", "sources/upload/catImg/", tbl_categories.image) as category_images, favourite_jobs.created_at as fev_created_at 
                                 FROM jobs
-                                JOIN favourite_jobs ON favourite_jobs.jobID=jobs.jobID AND favourite_jobs.faculityID = `+facultyID+`
-                                LEFT JOIN applied_jobs ON applied_jobs.jobID = jobs.jobID AND applied_jobs.faculityID = `+facultyID+`
+                                JOIN favourite_jobs ON favourite_jobs.jobID=jobs.jobID AND favourite_jobs.faculityID = `+ facultyID + `
+                                LEFT JOIN applied_jobs ON applied_jobs.jobID = jobs.jobID AND applied_jobs.faculityID = `+ facultyID + `
                                 LEFT JOIN tbl_categories ON tbl_categories.ID = jobs.catID
                                 LEFT JOIN employer_user ON employer_user.employerID=jobs.employerID
                                 WHERE jobs.status !=0
-                                AND is_delete != 1 order by `+order_by_query
+                                AND is_delete != 1 order by `+ order_by_query
 
         const data = await runQuery(query, [])
 
@@ -718,25 +815,43 @@ exports.allFavourite = async (req, res) => {
             item.created_at = getDateFormat(item.created_at)
         });
 
-        const jobsList = data.map(job => ({
-            ...job,
-            pack_type: pack.type ? pack.type : ''
-        }));
-        
-        return sendSuccess(res, { data: jobsList, message: "Favourite jobs list..." });       
+        const employerId = await getEmployerIdByEmployerID(data[0].employerID);
+
+
+
+        const jobsList = await Promise.all(
+            data.map(async (job) => {
+                const jobID = await getEnyIdByJobId(job.jobID);
+                return {
+                    ...job,
+                    pack_type: pack.type ? pack.type : '',
+                    employerID: employerId,
+                    jobID
+                };
+            })
+        );
+
+
+
+        return sendSuccess(res, { data: jobsList, message: "Favourite jobs list..." });
     } catch (error) {
         return sendError(res, { message: error.message });
     }
 };
 
 exports.applyJob = async (req, res) => {
+
+    const { facultyID: faculty_id, jobID : jobIdEnc, date1, date2, expected_joining_date, regToken, device_type, duration_notice_period } = req.body
+        const jobIDNoEnc = await runQuery(`select jobID from jobs where job_eny_id=?`, [jobIdEnc]);
+        const jobID = jobIDNoEnc[0]?.jobID
+
     try {
-        const { facultyID, jobID, date1, date2, expected_joining_date, regToken, device_type, duration_notice_period } = req.body
-        if (!facultyID) {
+        if (!faculty_id) {
             return sendError(res, { message: "Please enter your user ID..." });
         } else if (!jobID) {
             return sendError(res, { message: "Please enter your job ID..." });
         } else {
+            const facultyID = await generateUserIdByEnyId(faculty_id)
             const data = await runQuery(`select * from applied_jobs where jobID = ? AND faculityID = ?`, [jobID, facultyID])
             if (data.length > 0) {
                 return sendSuccess(res, { message: "Job already applied..." })
@@ -746,38 +861,35 @@ exports.applyJob = async (req, res) => {
 
                 const faculityData = await runQuery("SELECT faculity_users.*, tbl_experience.experience as experience_label, tbl_salary.salary as salary_label FROM faculity_users LEFT JOIN tbl_experience on tbl_experience.ID = faculity_users.experience LEFT JOIN tbl_salary on tbl_salary.ID = faculity_users.salary WHERE faculity_users.faculityID = ?", [facultyID]);
                 const jobData = await runQuery("SELECT jobs.*, employer_user.name as employer_name, employer_user.email as employer_email FROM jobs LEFT JOIN employer_user on employer_user.employerID = jobs.employerID WHERE jobs.jobID = ?", [jobID]);
-              
+
                 // applied job insert query 
                 const applyQuery = await runQuery(`insert into applied_jobs set status='Applied', faculityID=?, jobID=?, preference_date1=?, preference_date2=?, expected_joining_date=?, duration_notice_period=?`, [facultyID, jobID, date1, date2, expectedJoiningDate, durationNoticePeriod])
-                if(applyQuery.insertId){
+                if (applyQuery.insertId) {
 
                     // applied job status log(application tracking)
-                    await runQuery(`insert into applied_status_log set status='Applied', applied_id=?, jobID=?, user_id=?, created_at=?`, [applyQuery.insertId, jobID, facultyID, moment().format('YYYY-MM-DD HH:mm:ss')])    
-                    jobUrl = process.env.FRONT_URL+"jobs/"+jobID+"/"+facultyID;
-                    
+                    await runQuery(`insert into applied_status_log set status='Applied', applied_id=?, jobID=?, user_id=?, created_at=?`, [applyQuery.insertId, jobID, facultyID, moment().format('YYYY-MM-DD HH:mm:ss')])
+                    jobUrl = process.env.FRONT_URL + "jobs/" + jobID + "/" + facultyID;
+
                     // Set Admin notification
-                    const message = faculityData[0].name+" has been applied for the job:"+jobData[0].job_title 
+                    const message = faculityData[0].name + " has been applied for the job:" + jobData[0].job_title
                     const queryData = [jobID, jobData[0].catID, jobData[0].functionID, applyQuery.insertId, facultyID, message, moment().format('YYYY-MM-DD HH:mm:ss')]
-                    await runQuery(`insert into admin_notification set type='Job Application', jobID=?, catID=?, functionID=?, applyID=?, facultyID=?, message=?, created_at=?`, queryData)   
+                    await runQuery(`insert into admin_notification set type='Job Application', jobID=?, catID=?, functionID=?, applyID=?, facultyID=?, message=?, created_at=?`, queryData)
 
 
                     const notificationData = [facultyID, jobID, moment().format('YYYY-MM-DD HH:mm:ss')]
-                    await runQuery(`insert into notification set type='notification', title='Apply For Job', message='You have Successfully applied for the job', status=1, faculityID=?, linkID=?, created_at=?`, notificationData)   
-
+                    await runQuery(`insert into notification set type='notification', title='Apply For Job', message='You have Successfully applied for the job', status=1, faculityID=?, linkID=?, created_at=?`, notificationData)
 
                     // Get All Device Token
                     const faculityTokens = await runQuery(`select GROUP_CONCAT(regToken) as regToken from faculity_device_token where faculityID = ?`, [facultyID])
                     let allTokein = faculityTokens[0].regToken
                     allTokein = allTokein?.split(',')
 
-                    if(allTokein?.length > 0) {
-                        if(allTokein?.indexOf(regToken) === -1)   {  
+                    if (allTokein?.length > 0) {
+                        if (allTokein?.indexOf(regToken) === -1) {
                             allTokein?.push(regToken)
-                        } 
+                        }
                     }
-                     
 
-                    
                     // await allTokein.forEach((value, key) => {
                     //     sendNotificationToFaculity(value, {
                     //         title: jobData[0].job_title+':Applied',
@@ -785,11 +897,9 @@ exports.applyJob = async (req, res) => {
                     //         job_url: jobUrl
                     //     });
                     // });
-                    
- 
-                    await applyJobMail(jobData, faculityData, 'Applied'); 
-                    await employerApplyJobMail(jobData, faculityData); 
 
+                    await applyJobMail(jobData, faculityData, 'Applied');
+                    await employerApplyJobMail(jobData, faculityData);
 
                     // await sendNotificationToFaculity(regToken, {
                     // await sendNotificationToFaculity(faculityData[0]?.regToken, {
@@ -798,11 +908,10 @@ exports.applyJob = async (req, res) => {
                     //     job_url: jobUrl,
                     //     imageUrl: ""
                     // });                    
-                    return sendSuccess(res, { data: [{appliedID:applyQuery.insertId}], message: "You have Successfully applied for the job......" })
+                    return sendSuccess(res, { data: [{ appliedID: applyQuery.insertId }], message: "You have Successfully applied for the job......" })
                 } else {
                     return sendError(res, { data: [], message: "Something went wrong. Please try again later..." });
                 }
-                
             }
         }
     } catch (error) {
@@ -817,154 +926,176 @@ exports.applyJob = async (req, res) => {
     }
 }
 
-
-
 // Old-code ->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 exports.searchJob = async (req, res) => {
-        try {
-            const {
-                salary_minimum,
-                salary_maximum,
-                experience_minimum,
-                experience_maximum,
-                work_place_type,
-                job_type,
-                job_name,
-                city_name,
-                state_name,
-            } = req.query
+    try {
+        const {
+            salary_minimum,
+            salary_maximum,
+            experience_minimum,
+            experience_maximum,
+            work_place_type,
+            job_type,
+            job_name,
+            city_name,
+            state_name,
+        } = req.query
 
-            let query = `select * from jobs j join cities c on j.city_id=c.city_id join states s on j.state_id=s.state_id where job_status = ?`
+        let query = `select * from jobs j join cities c on j.city_id=c.city_id join states s on j.state_id=s.state_id where job_status = ?`
 
-            const values = []
+        const values = []
 
-            values.push('Open')
+        values.push('Open')
 
-            if ((salary_maximum && salary_minimum) && (parseInt(salary_minimum) && parseInt(salary_maximum))) {
-                query += ` and salary_minimum >=? and salary_maximum<=?`
-                values.push(salary_minimum, salary_maximum)
-            }
-
-            if ((experience_minimum && experience_maximum) && (parseInt(experience_minimum) && parseInt(experience_maximum))) {
-                query += ` and experience_minimum >= ? and experience_maximum <= ?`
-                values.push(experience_minimum, experience_maximum)
-            }
-
-            if (WORK_PLACE_TYPE.includes(work_place_type)) {
-                query += ` and work_place_type=?`
-                values.push(work_place_type)
-            }
-
-            if (JOBS_TYPE.includes(job_type)) {
-                query += ` and job_type=?`
-                values.push(job_type)
-            }
-
-            if (job_name) {
-                query += ` and (job_title like ? or job_description like ?)`
-                values.push(`%${job_name}%`, `%${job_name}%`)
-            }
-
-            if (city_name) {
-                query += ` and city_name like ?`
-                values.push(`%${city_name}%`)
-            }
-
-            if (state_name) {
-                query += ` and state_name like ?`
-                values.push(`%${state_name}%`)
-            }
-
-            const data = await runQuery(query, values)
-
-            return sendSuccess(res, { data: data, message: "Job list..." })
-
-        } catch (error) {
-
-            return sendError(res, { message: error.message })
-
+        if ((salary_maximum && salary_minimum) && (parseInt(salary_minimum) && parseInt(salary_maximum))) {
+            query += ` and salary_minimum >=? and salary_maximum<=?`
+            values.push(salary_minimum, salary_maximum)
         }
-    }
 
-    // exports.applyJob = async (req, res) => {
-    //     try {
-    //         const { job_id, u_id, rs_id } = req.body
-    //         if (!job_id) {
-    //             return sendError(res, { message: "Please select the job..." })
-    //         } else if (!rs_id) {
-    //             return sendError(res, { message: "Please select the resume..." })
-    //         } else {
-    //             const data = await runQuery(`select * from users where u_id = ?`, [u_id])
-    //             if (data.length > 0) {
-    //                 await runQuery(`insert into job_applications set job_id = ?,u_id=?,rs_id=?`, [job_id, u_id, rs_id])
-    //                 return sendSuccess(res, { message: "Application has been applied..." })
-    //             } else {
-    //                 return sendError(res, { message: "Your account is not found..." })
-    //             }
-    //         }
-    //     } catch (error) {
-    //         if (error.code == 'ER_NO_REFERENCED_ROW_2') {
-    //             return sendError(res, { message: "Please select the valid job or resume..." })
-    //         } else if (error.code == 'ER_DUP_ENTRY') {
-    //             return sendError(res, { message: "Already applied..." })
-    //         } else {
-    //             return sendError(res, { message: error.message })
-    //         }
-    //     }
-    // }
-
-    exports.answerSecreenQuestions = async (req, res) => {
-        try {
-            const { apl_id, ques_id, answer } = req.body
-            if (!apl_id) {
-                return sendError(res, { message: "Please apply to the job first..." })
-            } else if (!ques_id) {
-                return sendError(res, { message: "Please select the question..." })
-            } else if (!answer || !isValidJson(answer)) {
-                return sendError(res, { message: "Please valid the answer..." })
-            } else {
-                await runQuery(`insert into job_screening_questions_response set ques_id=?,apl_id=?,ans_text=?`, [ques_id, apl_id, answer])
-                return sendSuccess(res, { message: "Answer has been submitted..." })
-            }
-        } catch (error) {
-            if (error.code == 'ER_DUP_ENTRY') {
-                return sendError(res, { message: "Already answered..." })
-            }
-            return sendError(res, { message: error.message })
+        if ((experience_minimum && experience_maximum) && (parseInt(experience_minimum) && parseInt(experience_maximum))) {
+            query += ` and experience_minimum >= ? and experience_maximum <= ?`
+            values.push(experience_minimum, experience_maximum)
         }
-    }
 
-    exports.saveJob = async ({ body: { job_id, u_id } }, res) => {
-        try {
-            if (!job_id) {
-                return sendError(res, { message: "Please select the job..." })
-            }
-            await runQuery(`insert into saved_jobs set job_id=?,u_id=?`, [job_id, u_id])
-            return sendSuccess(res, { message: "Job has been saved..." })
-        } catch (error) {
-            if (error.code == 'ER_DUP_ENTRY') {
-                return sendError(res, { message: "This job alredy saved..." })
-            }
-            return sendError(res, { message: error.message })
+        if (WORK_PLACE_TYPE.includes(work_place_type)) {
+            query += ` and work_place_type=?`
+            values.push(work_place_type)
         }
-    }
 
-    exports.removeSavedJob = async (req, res) => {
-        try {
-            const { saved_id } = req.params
-            await runQuery(`delete from saved_jobs where saved_id = ?`, [saved_id])
-            return sendSuccess(res, { message: "Job has been removed..." })
-        } catch (error) {
-            return sendError(res, { message: error.message })
+        if (JOBS_TYPE.includes(job_type)) {
+            query += ` and job_type=?`
+            values.push(job_type)
         }
-    }
 
-    exports.savedJobs = async ({ body: { u_id } }, res) => {
-        try {
-            const data = await runQuery(`select *,s.state_name,c.city_name from saved_jobs sj join jobs j on sj.job_id=j.job_id join cities c on j.city_id= c.city_id join states s on s.state_id=j.state_id where sj.u_id=?`, [u_id])
-            return sendSuccess(res, { data: data, message: "Saved jobs list..." })
-        } catch (error) {
-            return sendError(res, { message: error.message })
+        if (job_name) {
+            query += ` and (job_title like ? or job_description like ?)`
+            values.push(`%${job_name}%`, `%${job_name}%`)
         }
+
+        if (city_name) {
+            query += ` and city_name like ?`
+            values.push(`%${city_name}%`)
+        }
+
+        if (state_name) {
+            query += ` and state_name like ?`
+            values.push(`%${state_name}%`)
+        }
+
+        const data = await runQuery(query, values)
+
+        return sendSuccess(res, { data: data, message: "Job list..." })
+
+    } catch (error) {
+
+        return sendError(res, { message: error.message })
+
     }
+}
+
+// exports.applyJob = async (req, res) => {
+//     try {
+//         const { job_id, u_id, rs_id } = req.body
+//         if (!job_id) {
+//             return sendError(res, { message: "Please select the job..." })
+//         } else if (!rs_id) {
+//             return sendError(res, { message: "Please select the resume..." })
+//         } else {
+//             const data = await runQuery(`select * from users where u_id = ?`, [u_id])
+//             if (data.length > 0) {
+//                 await runQuery(`insert into job_applications set job_id = ?,u_id=?,rs_id=?`, [job_id, u_id, rs_id])
+//                 return sendSuccess(res, { message: "Application has been applied..." })
+//             } else {
+//                 return sendError(res, { message: "Your account is not found..." })
+//             }
+//         }
+//     } catch (error) {
+//         if (error.code == 'ER_NO_REFERENCED_ROW_2') {
+//             return sendError(res, { message: "Please select the valid job or resume..." })
+//         } else if (error.code == 'ER_DUP_ENTRY') {
+//             return sendError(res, { message: "Already applied..." })
+//         } else {
+//             return sendError(res, { message: error.message })
+//         }
+//     }
+// }
+
+exports.answerSecreenQuestions = async (req, res) => {
+    try {
+        const { apl_id, ques_id, answer } = req.body
+        if (!apl_id) {
+            return sendError(res, { message: "Please apply to the job first..." })
+        } else if (!ques_id) {
+            return sendError(res, { message: "Please select the question..." })
+        } else if (!answer || !isValidJson(answer)) {
+            return sendError(res, { message: "Please valid the answer..." })
+        } else {
+            await runQuery(`insert into job_screening_questions_response set ques_id=?,apl_id=?,ans_text=?`, [ques_id, apl_id, answer])
+            return sendSuccess(res, { message: "Answer has been submitted..." })
+        }
+    } catch (error) {
+        if (error.code == 'ER_DUP_ENTRY') {
+            return sendError(res, { message: "Already answered..." })
+        }
+        return sendError(res, { message: error.message })
+    }
+}
+
+exports.saveJob = async ({ body: { job_id, u_id } }, res) => {
+    try {
+        if (!job_id) {
+            return sendError(res, { message: "Please select the job..." })
+        }
+        await runQuery(`insert into saved_jobs set job_id=?,u_id=?`, [job_id, u_id])
+        return sendSuccess(res, { message: "Job has been saved..." })
+    } catch (error) {
+        if (error.code == 'ER_DUP_ENTRY') {
+            return sendError(res, { message: "This job alredy saved..." })
+        }
+        return sendError(res, { message: error.message })
+    }
+}
+
+exports.removeSavedJob = async (req, res) => {
+    try {
+        const { saved_id } = req.params
+        await runQuery(`delete from saved_jobs where saved_id = ?`, [saved_id])
+        return sendSuccess(res, { message: "Job has been removed..." })
+    } catch (error) {
+        return sendError(res, { message: error.message })
+    }
+}
+
+exports.savedJobs = async ({ body: { u_id } }, res) => {
+    try {
+        const data = await runQuery(`select *,s.state_name,c.city_name from saved_jobs sj join jobs j on sj.job_id=j.job_id join cities c on j.city_id= c.city_id join states s on s.state_id=j.state_id where sj.u_id=?`, [u_id])
+        return sendSuccess(res, { data: data, message: "Saved jobs list..." })
+    } catch (error) {
+        return sendError(res, { message: error.message })
+    }
+}
+
+exports.generateJobsId = async (req, res) => {
+    try {
+
+        const searchData = await runQuery(`select jobID, job_eny_id from jobs where job_eny_id is null order by jobID asc limit 2000 `, [])
+        await searchData.map(async row => {
+
+            const ENCRYPTION_KEY = crypto?.randomBytes(32); // Must be 32 bytes for AES-256
+            const IV = crypto?.randomBytes(16); // Initialization vector, must be 16 bytes
+            userId = row.jobID;
+            const cipher = crypto.createCipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
+            let encrypted = cipher.update(userId.toString(), 'utf8', 'hex');
+            encrypted += cipher.final('hex');
+            let enyIdOne = Math.floor(Math.random() * 90000) + 10000;
+            let enyIdTwo = Math.floor(Math.random() * 90000) + 10000;
+            enyID = enyIdOne + "" + encrypted + "" + enyIdTwo;
+
+            const updateQuery = `UPDATE jobs SET job_eny_id = ? WHERE jobID = ?`;
+            runQuery(updateQuery, [enyID, userId]);
+        });
+    } catch (error) {
+        return sendError(res, { message: error.message });
+    }
+};

@@ -1,4 +1,4 @@
-const { sendError, sendSuccess } = require("../utils/commonFunctions")
+const { sendError, sendSuccess, generateUserIdByEnyId } = require("../utils/commonFunctions")
 const { isValidEmail } = require("../utils/validator");
 const { runQuery } = require("../utils/executeQuery")
 const multer = require('multer');
@@ -295,7 +295,11 @@ exports.jobLevel = async (req, res) => {
 };
 
 exports.skillSearch = async (req, res) => {
-    const { facultyID, skill } = req.body;
+    const { facultyID : faculty_id, skill } = req.body;
+    const facultyID = await generateUserIdByEnyId(faculty_id)
+    if (!facultyID) {
+        return sendError(res, { message: "Invalid User!, Please login again." });
+    }
 
     try {
         let allSkillsList
