@@ -1,0 +1,88 @@
+//---- Hosting Credential ----//
+Email Id - tushar@fpsjob.com
+Password - Sandeep@fps1091
+
+
+//------ Server Credentials -------- //
+Host Name - srv461200.hstgr.cloud
+User - root
+Password - FPSJob123@
+
+
+
+// --- MYSQL Password -----//
+-- For Users & Institutions
+user - admin
+password - FPSJob123
+
+-- For Admistartion
+user - fps
+pass - Admin9012@Job
+
+
+
+// ------- Firebase Credentials ------ //
+email - bucksmonster@gmail.com
+password - Sandeep@fps1091
+
+
+// ------- SMS Panel Login Details ---
+Url: sms.k7marketinghub.com
+Username: FPSjobs
+Password: 123456
+-
+K7 Marketing Hub Pvt. Ltd.
+Website: www.k7marketinghub.com
+Sales: 06280-181833
+Support: 088013-88012
+
+
+// -- Old Serve IONOS---/
+ceo@fpsjob.com
+Sandeep@fps1091
+
+
+// 0----- Phone Pe -----0//
+
+dashboard
+email - ceo@fpsjob.com
+pas - Sandeep@tallento.ai
+
+Testing
+-PGTESTPAYUAT
+-099eb0cd-02cf-4e2a-8aca-3e6c6aff0399
+-1
+-https://api-preprod.phonepe.com/apis/hermes
+
+Production
+-M221DY1SUCLEI 
+"key": "d4e08707-1540-4a89-996d-a18a6e28213b"
+"keyIndex": 1,
+https://api.phonepe.com/apis/hermes
+
+
+<!-- Hositinger Server Password === vL#7Ca(}OrMfl9o or vL#7CaOrMfl9o -->
+
+<!-- Tallento@fps1091
+info@fpsjob.com -->
+
+Production Server
+DB
+http://148.113.1.214/phpmyadmin/
+DB Name :   fpsjobdev
+Username:   fpsjobdev
+Password:   WmFJ997bodpH40BypC
+
+ROOT Credentials
+148.113.1.214
+Sudo User : ubuntu
+Sudo Password : ZzgaM++k@JEWV)RR
+
+
+<!-- 
+--- Admin Access --- 
+
+Super Admin
+Admin
+HR 
+-->

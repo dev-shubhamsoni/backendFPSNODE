@@ -1,0 +1,6 @@
+//  exports.InstituteLOGO = "Images/institutions-logo"
+exports.UserProfile = "Images/user-profile"
+exports.UserResume = "uploads/user"
+exports.UserResumeServer = "/var/www/html/admin.fpsjob.com/sources/upload"
+exports.InstituteLOGO = "uploads/institute"
+exports.UserLOGO = "uploads/user"
